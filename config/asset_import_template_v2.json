@@ -1,0 +1,146 @@
+{
+  "template_version": "2.0",
+  "max_rows": 1000,
+  "sheets": [
+    {
+      "name": "Departments",
+      "purpose": "部门层级",
+      "headers": ["platform_id", "row_version", "department_code", "parent_department_code", "name", "is_active"],
+      "required_on_create": ["department_code", "name", "is_active"],
+      "nullable": ["parent_department_code"],
+      "identifier_fields": ["platform_id", "department_code", "parent_department_code"],
+      "external_key": "department_code",
+      "types": {"platform_id": "uuid", "row_version": "integer", "is_active": "boolean"}
+    },
+    {
+      "name": "People",
+      "purpose": "人员、工号和所属部门",
+      "headers": ["platform_id", "row_version", "employee_no", "display_name", "username", "primary_department_code", "employment_status"],
+      "required_on_create": ["employee_no", "display_name", "employment_status"],
+      "nullable": ["username", "primary_department_code"],
+      "identifier_fields": ["platform_id", "employee_no", "username", "primary_department_code"],
+      "external_key": "employee_no",
+      "types": {"platform_id": "uuid", "row_version": "integer", "employment_status": "enum"},
+      "enums": {"employment_status": ["active", "inactive", "departed"]}
+    },
+    {
+      "name": "CloudProviders",
+      "purpose": "可维护云厂商字典",
+      "headers": ["platform_id", "row_version", "provider_code", "name", "provider_kind", "status"],
+      "required_on_create": ["provider_code", "name", "provider_kind", "status"],
+      "nullable": [],
+      "identifier_fields": ["platform_id", "provider_code"],
+      "external_key": "provider_code",
+      "types": {"platform_id": "uuid", "row_version": "integer", "provider_kind": "enum", "status": "enum"},
+      "enums": {
+        "provider_kind": ["public_cloud", "private_cloud", "on_premises", "other"],
+        "status": ["active", "disabled", "retired"]
+      }
+    },
+    {
+      "name": "Servers",
+      "purpose": "服务器资产和简单当前配置",
+      "headers": ["platform_id", "row_version", "environment_code", "provider_code", "provider_instance_id", "name", "lifecycle_status", "cpu_cores", "memory_gib", "disk_gib", "internal_ip", "public_ip", "os_name", "os_version", "architecture", "work_account"],
+      "required_on_create": ["environment_code", "name", "lifecycle_status"],
+      "nullable": ["provider_code", "provider_instance_id", "cpu_cores", "memory_gib", "disk_gib", "internal_ip", "public_ip", "os_name", "os_version", "architecture", "work_account"],
+      "identifier_fields": ["platform_id", "environment_code", "provider_code", "provider_instance_id"],
+      "external_key": "provider_instance_id",
+      "types": {"platform_id": "uuid", "row_version": "integer", "lifecycle_status": "enum", "cpu_cores": "positive_integer", "memory_gib": "positive_decimal", "disk_gib": "positive_decimal", "internal_ip": "ip", "public_ip": "ip"},
+      "enums": {"lifecycle_status": ["planned", "active", "maintenance", "disabled", "retired"]}
+    },
+    {
+      "name": "ManagementGroups",
+      "purpose": "服务器或智能体虚拟管理分组",
+      "headers": ["platform_id", "row_version", "group_code", "name", "resource_type", "purpose", "description", "lifecycle_status"],
+      "required_on_create": ["group_code", "name", "resource_type", "lifecycle_status"],
+      "nullable": ["purpose", "description"],
+      "identifier_fields": ["platform_id", "group_code"],
+      "external_key": "group_code",
+      "types": {"platform_id": "uuid", "row_version": "integer", "resource_type": "enum", "lifecycle_status": "enum"},
+      "enums": {"resource_type": ["server", "agent"], "lifecycle_status": ["active", "disabled", "retired"]}
+    },
+    {
+      "name": "ServerGroupMembers",
+      "purpose": "服务器分组成员关系",
+      "headers": ["platform_id", "row_version", "group_code", "server_platform_id", "provider_instance_id", "valid_from", "valid_to"],
+      "required_on_create": ["group_code", "valid_from"],
+      "nullable": ["server_platform_id", "provider_instance_id", "valid_to"],
+      "identifier_fields": ["platform_id", "group_code", "server_platform_id", "provider_instance_id"],
+      "types": {"platform_id": "uuid", "row_version": "integer", "server_platform_id": "uuid", "valid_from": "timestamp", "valid_to": "timestamp"}
+    },
+    {
+      "name": "Agents",
+      "purpose": "主智能体、子智能体和服务类型",
+      "headers": ["platform_id", "row_version", "agent_external_code", "name", "structure_role", "parent_agent_platform_id", "service_archetype", "lifecycle_status", "owning_department_code", "business_admin_employee_no", "it_admin_employee_no", "primary_service_employee_no", "primary_service_department_code", "business_domain", "business_scenario", "description"],
+      "required_on_create": ["name", "structure_role", "service_archetype", "lifecycle_status"],
+      "nullable": ["agent_external_code", "parent_agent_platform_id", "owning_department_code", "business_admin_employee_no", "it_admin_employee_no", "primary_service_employee_no", "primary_service_department_code", "business_domain", "business_scenario", "description"],
+      "identifier_fields": ["platform_id", "agent_external_code", "parent_agent_platform_id", "owning_department_code", "business_admin_employee_no", "it_admin_employee_no", "primary_service_employee_no", "primary_service_department_code"],
+      "external_key": "agent_external_code",
+      "types": {"platform_id": "uuid", "row_version": "integer", "parent_agent_platform_id": "uuid", "structure_role": "enum", "service_archetype": "enum", "lifecycle_status": "enum"},
+      "enums": {
+        "structure_role": ["primary", "subagent"],
+        "service_archetype": ["personal", "department", "business"],
+        "lifecycle_status": ["requested", "testing", "active", "suspended", "retired"]
+      }
+    },
+    {
+      "name": "AgentAccessUsers",
+      "purpose": "主智能体可访问用户",
+      "headers": ["platform_id", "row_version", "agent_platform_id", "agent_external_code", "employee_no", "valid_from", "valid_to"],
+      "required_on_create": ["employee_no", "valid_from"],
+      "nullable": ["agent_platform_id", "agent_external_code", "valid_to"],
+      "identifier_fields": ["platform_id", "agent_platform_id", "agent_external_code", "employee_no"],
+      "types": {"platform_id": "uuid", "row_version": "integer", "agent_platform_id": "uuid", "valid_from": "timestamp", "valid_to": "timestamp"}
+    },
+    {
+      "name": "AgentGroupMembers",
+      "purpose": "主智能体分组成员关系",
+      "headers": ["platform_id", "row_version", "group_code", "agent_platform_id", "agent_external_code", "valid_from", "valid_to"],
+      "required_on_create": ["group_code", "valid_from"],
+      "nullable": ["agent_platform_id", "agent_external_code", "valid_to"],
+      "identifier_fields": ["platform_id", "group_code", "agent_platform_id", "agent_external_code"],
+      "types": {"platform_id": "uuid", "row_version": "integer", "agent_platform_id": "uuid", "valid_from": "timestamp", "valid_to": "timestamp"}
+    },
+    {
+      "name": "Runtimes",
+      "purpose": "OpenClaw、Hermes 等 Runtime/Gateway",
+      "headers": ["platform_id", "row_version", "legacy_runtime_id", "server_platform_id", "provider_instance_id", "runtime_family_code", "name", "runtime_role", "deployment_mode", "desired_version", "lifecycle_status", "bind_address", "endpoint_port", "runtime_account", "config_path", "state_path", "container_name", "image_ref"],
+      "required_on_create": ["runtime_family_code", "name", "runtime_role", "deployment_mode", "lifecycle_status"],
+      "nullable": ["legacy_runtime_id", "server_platform_id", "provider_instance_id", "desired_version", "bind_address", "endpoint_port", "runtime_account", "config_path", "state_path", "container_name", "image_ref"],
+      "identifier_fields": ["platform_id", "legacy_runtime_id", "server_platform_id", "provider_instance_id", "runtime_family_code"],
+      "external_key": "legacy_runtime_id",
+      "types": {"platform_id": "uuid", "row_version": "integer", "server_platform_id": "uuid", "runtime_role": "enum", "deployment_mode": "enum", "lifecycle_status": "enum", "endpoint_port": "port"},
+      "enums": {"runtime_role": ["gateway"], "deployment_mode": ["baremetal", "container"], "lifecycle_status": ["planned", "active", "disabled", "retired"]}
+    },
+    {
+      "name": "AgentDeployments",
+      "purpose": "主智能体到 Runtime 的部署历史",
+      "headers": ["platform_id", "row_version", "primary_agent_platform_id", "agent_external_code", "runtime_platform_id", "legacy_runtime_id", "lifecycle_status", "valid_from", "valid_to"],
+      "required_on_create": ["lifecycle_status", "valid_from"],
+      "nullable": ["primary_agent_platform_id", "agent_external_code", "runtime_platform_id", "legacy_runtime_id", "valid_to"],
+      "identifier_fields": ["platform_id", "primary_agent_platform_id", "agent_external_code", "runtime_platform_id", "legacy_runtime_id"],
+      "types": {"platform_id": "uuid", "row_version": "integer", "primary_agent_platform_id": "uuid", "runtime_platform_id": "uuid", "lifecycle_status": "enum", "valid_from": "timestamp", "valid_to": "timestamp"},
+      "enums": {"lifecycle_status": ["planned", "active", "inactive", "retired"]}
+    },
+    {
+      "name": "AgentDeploymentMembers",
+      "purpose": "部署内主、子智能体映射",
+      "headers": ["platform_id", "row_version", "deployment_platform_id", "runtime_platform_id", "agent_platform_id", "member_role", "parent_member_platform_id", "runtime_agent_key", "mapping_status", "config_ref", "valid_from", "valid_to"],
+      "required_on_create": ["deployment_platform_id", "runtime_platform_id", "agent_platform_id", "member_role", "mapping_status", "valid_from"],
+      "nullable": ["parent_member_platform_id", "runtime_agent_key", "config_ref", "valid_to"],
+      "identifier_fields": ["platform_id", "deployment_platform_id", "runtime_platform_id", "agent_platform_id", "parent_member_platform_id", "runtime_agent_key"],
+      "types": {"platform_id": "uuid", "row_version": "integer", "deployment_platform_id": "uuid", "runtime_platform_id": "uuid", "agent_platform_id": "uuid", "parent_member_platform_id": "uuid", "member_role": "enum", "mapping_status": "enum", "valid_from": "timestamp", "valid_to": "timestamp"},
+      "enums": {"member_role": ["primary", "subagent"], "mapping_status": ["planned", "verified", "unresolved"]}
+    },
+    {
+      "name": "NetworkRequirements",
+      "purpose": "智能体网络访问需求",
+      "headers": ["platform_id", "row_version", "agent_platform_id", "agent_external_code", "system_name", "target_type", "target_value", "protocol", "port_from", "port_to", "purpose", "valid_from", "valid_to"],
+      "required_on_create": ["system_name", "target_type", "target_value", "protocol", "valid_from"],
+      "nullable": ["agent_platform_id", "agent_external_code", "port_from", "port_to", "purpose", "valid_to"],
+      "identifier_fields": ["platform_id", "agent_platform_id", "agent_external_code"],
+      "types": {"platform_id": "uuid", "row_version": "integer", "agent_platform_id": "uuid", "target_type": "enum", "protocol": "enum", "port_from": "port", "port_to": "port", "valid_from": "timestamp", "valid_to": "timestamp"},
+      "enums": {"target_type": ["dns", "ipv4", "ipv6", "cidr", "url"], "protocol": ["tcp", "udp", "http", "https"]}
+    }
+  ]
+}

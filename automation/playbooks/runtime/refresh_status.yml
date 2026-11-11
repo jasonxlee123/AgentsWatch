@@ -1,0 +1,8 @@
+---
+- name: Refresh runtime status
+  hosts: all
+  gather_facts: false
+  roles:
+    - role: runtime_control
+      vars:
+        runtime_action: status

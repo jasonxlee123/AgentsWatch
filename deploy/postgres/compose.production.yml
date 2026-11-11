@@ -1,0 +1,64 @@
+name: agentswatch-postgres-prod
+
+services:
+  postgres:
+    image: "${AGENTSWATCH_POSTGRES_IMAGE:?set AGENTSWATCH_POSTGRES_IMAGE to the approved PostgreSQL 16 image}"
+    pull_policy: never
+    restart: unless-stopped
+    environment:
+      PGDATA: /var/lib/postgresql/data
+      POSTGRES_DB: "${AGENTSWATCH_POSTGRES_DATABASE:-agentswatch}"
+      POSTGRES_USER: "${AGENTSWATCH_POSTGRES_ADMIN_USER:?set AGENTSWATCH_POSTGRES_ADMIN_USER}"
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres-admin-password
+      POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256 --data-checksums
+    command:
+      - postgres
+      - -c
+      - listen_addresses=*
+      - -c
+      - ssl=on
+      - -c
+      - ssl_cert_file=/run/agentswatch-postgres-tls/server.crt
+      - -c
+      - ssl_key_file=/run/agentswatch-postgres-tls/server.key
+      - -c
+      - hba_file=/run/agentswatch-postgres-config/pg_hba.conf
+      - -c
+      - password_encryption=scram-sha-256
+      - -c
+      - ssl_min_protocol_version=TLSv1.2
+      - -c
+      - ssl_prefer_server_ciphers=on
+    volumes:
+      - "${AGENTSWATCH_POSTGRES_DATA_ROOT:-/data/agentswatch/management/postgres}:/var/lib/postgresql/data:z"
+      - "${AGENTSWATCH_POSTGRES_TLS_DIR:-/etc/agentswatch/postgres/tls}:/run/agentswatch-postgres-tls:ro"
+      - "${AGENTSWATCH_POSTGRES_HBA_FILE:-/etc/agentswatch/postgres/pg_hba.conf}:/run/agentswatch-postgres-config/pg_hba.conf:ro"
+      - "${AGENTSWATCH_POSTGRES_ADMIN_PASSWORD_FILE:?set AGENTSWATCH_POSTGRES_ADMIN_PASSWORD_FILE}:/run/secrets/postgres-admin-password:ro"
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=32m
+    shm_size: 256m
+    pids_limit: 512
+    stop_grace_period: 120s
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 10s
+      timeout: 3s
+      start_period: 10s
+      retries: 12
+    logging:
+      driver: json-file
+      options:
+        max-size: 20m
+        max-file: "10"
+    networks:
+      agentswatch-database:
+        aliases:
+          - agentswatch-db
+
+networks:
+  agentswatch-database:
+    name: agentswatch-database
+    internal: true
+    ipam:
+      config:
+        - subnet: "${AGENTSWATCH_DATABASE_NETWORK_SUBNET:-172.30.0.0/24}"

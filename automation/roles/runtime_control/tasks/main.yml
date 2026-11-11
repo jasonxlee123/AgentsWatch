@@ -1,0 +1,283 @@
+---
+- name: Validate runtime control inputs
+  ansible.builtin.assert:
+    that:
+      - runtime_management_driver in ['systemd', 'systemd_user', 'launchd', 'mock']
+      - runtime_management_target | length > 0
+      - runtime_action in ['status', 'start', 'stop', 'restart']
+    fail_msg: Invalid or incomplete runtime management configuration
+
+- name: Reject privilege escalation for systemd user services
+  ansible.builtin.assert:
+    that:
+      - not (ansible_become | default(false) | bool)
+    fail_msg: systemd user services must run as the configured SSH login user without become
+  become: false
+  when: runtime_management_driver == 'systemd_user'
+
+- name: Control systemd runtime
+  ansible.builtin.systemd_service:
+    name: "{{ runtime_management_target }}"
+    state: "{{ 'started' if runtime_action == 'start' else 'stopped' if runtime_action == 'stop' else 'restarted' }}"
+  when:
+    - runtime_management_driver == 'systemd'
+    - runtime_action != 'status'
+  become: true
+
+- name: Read systemd runtime status
+  ansible.builtin.command:
+    argv:
+      - systemctl
+      - is-active
+      - "{{ runtime_management_target }}"
+  register: runtime_systemd_status
+  changed_when: false
+  failed_when: runtime_systemd_status.rc not in [0, 3]
+  when: runtime_management_driver == 'systemd'
+  become: false
+
+- name: Read remote user id for systemd user service
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/id
+      - -u
+  register: runtime_systemd_user_uid
+  changed_when: false
+  become: false
+  when: runtime_management_driver == 'systemd_user'
+
+- name: Build systemd user manager environment
+  ansible.builtin.set_fact:
+    runtime_systemd_user_runtime_dir: "/run/user/{{ runtime_systemd_user_uid.stdout | trim }}"
+    runtime_systemd_user_bus: "unix:path=/run/user/{{ runtime_systemd_user_uid.stdout | trim }}/bus"
+  become: false
+  when: runtime_management_driver == 'systemd_user'
+
+- name: Check systemd user bus
+  ansible.builtin.stat:
+    path: "{{ runtime_systemd_user_runtime_dir }}/bus"
+  register: runtime_systemd_user_bus_stat
+  become: false
+  when: runtime_management_driver == 'systemd_user'
+
+- name: Require an active systemd user manager
+  ansible.builtin.assert:
+    that:
+      - runtime_systemd_user_bus_stat.stat.exists | default(false)
+    fail_msg: >-
+      systemd user manager bus is unavailable; enable lingering for the SSH login user
+      and ensure /run/user/<uid>/bus exists
+  become: false
+  when: runtime_management_driver == 'systemd_user'
+
+- name: Control systemd user runtime
+  ansible.builtin.systemd_service:
+    name: "{{ runtime_management_target }}"
+    scope: user
+    state: "{{ 'started' if runtime_action == 'start' else 'stopped' if runtime_action == 'stop' else 'restarted' }}"
+  environment:
+    XDG_RUNTIME_DIR: "{{ runtime_systemd_user_runtime_dir }}"
+    DBUS_SESSION_BUS_ADDRESS: "{{ runtime_systemd_user_bus }}"
+  become: false
+  when:
+    - runtime_management_driver == 'systemd_user'
+    - runtime_action != 'status'
+
+- name: Read systemd user runtime status
+  ansible.builtin.command:
+    argv:
+      - systemctl
+      - --user
+      - is-active
+      - "{{ runtime_management_target }}"
+  environment:
+    XDG_RUNTIME_DIR: "{{ runtime_systemd_user_runtime_dir }}"
+    DBUS_SESSION_BUS_ADDRESS: "{{ runtime_systemd_user_bus }}"
+  register: runtime_systemd_status
+  changed_when: false
+  failed_when: runtime_systemd_status.rc not in [0, 3]
+  become: false
+  when: runtime_management_driver == 'systemd_user'
+
+- name: Read local user id for launchd
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/id
+      - -u
+  register: runtime_launchd_uid
+  changed_when: false
+  when: runtime_management_driver == 'launchd'
+
+- name: Build launchd service target
+  ansible.builtin.set_fact:
+    runtime_launchd_service: "gui/{{ runtime_launchd_uid.stdout | trim }}/{{ runtime_management_target }}"
+  when: runtime_management_driver == 'launchd'
+
+- name: Read launchd runtime status before control
+  ansible.builtin.command:
+    argv:
+      - /bin/launchctl
+      - print
+      - "{{ runtime_launchd_service }}"
+  register: runtime_launchd_before
+  changed_when: false
+  failed_when: false
+  no_log: true
+  when: runtime_management_driver == 'launchd'
+
+- name: Start stopped launchd runtime
+  ansible.builtin.command:
+    argv:
+      - /bin/launchctl
+      - enable
+      - "{{ runtime_launchd_service }}"
+  changed_when: runtime_launchd_before.rc != 0 or 'state = running' not in runtime_launchd_before.stdout
+  when:
+    - runtime_management_driver == 'launchd'
+    - runtime_action == 'start'
+
+- name: Kick-start launchd runtime
+  ansible.builtin.command:
+    argv:
+      - /bin/launchctl
+      - kickstart
+      - "{{ runtime_launchd_service }}"
+  when:
+    - runtime_management_driver == 'launchd'
+    - runtime_action == 'start'
+    - runtime_launchd_before.rc != 0 or 'state = running' not in runtime_launchd_before.stdout
+
+- name: Disable launchd runtime before stop
+  ansible.builtin.command:
+    argv:
+      - /bin/launchctl
+      - disable
+      - "{{ runtime_launchd_service }}"
+  changed_when: runtime_launchd_before.rc == 0 and 'state = running' in runtime_launchd_before.stdout
+  when:
+    - runtime_management_driver == 'launchd'
+    - runtime_action == 'stop'
+
+- name: Stop running launchd runtime
+  ansible.builtin.command:
+    argv:
+      - /bin/launchctl
+      - kill
+      - SIGTERM
+      - "{{ runtime_launchd_service }}"
+  when:
+    - runtime_management_driver == 'launchd'
+    - runtime_action == 'stop'
+    - runtime_launchd_before.rc == 0
+    - "'state = running' in runtime_launchd_before.stdout"
+
+- name: Ensure launchd runtime is enabled before restart
+  ansible.builtin.command:
+    argv:
+      - /bin/launchctl
+      - enable
+      - "{{ runtime_launchd_service }}"
+  changed_when: false
+  when:
+    - runtime_management_driver == 'launchd'
+    - runtime_action == 'restart'
+
+- name: Restart launchd runtime
+  ansible.builtin.command:
+    argv:
+      - /bin/launchctl
+      - kickstart
+      - -k
+      - "{{ runtime_launchd_service }}"
+  when:
+    - runtime_management_driver == 'launchd'
+    - runtime_action == 'restart'
+
+- name: Wait for runtime endpoint after start or restart
+  ansible.builtin.wait_for:
+    host: "{{ runtime_probe_host | default('127.0.0.1') }}"
+    port: "{{ runtime_endpoint_port }}"
+    state: started
+    connect_timeout: 1
+    timeout: 30
+  register: runtime_endpoint_started
+  when:
+    - runtime_management_driver in ['systemd', 'systemd_user', 'launchd']
+    - runtime_action in ['start', 'restart']
+    - runtime_endpoint_port is defined
+    - runtime_endpoint_port is not none
+
+- name: Wait for runtime endpoint after stop
+  ansible.builtin.wait_for:
+    host: "{{ runtime_probe_host | default('127.0.0.1') }}"
+    port: "{{ runtime_endpoint_port }}"
+    state: stopped
+    connect_timeout: 1
+    timeout: 30
+  register: runtime_endpoint_stopped
+  when:
+    - runtime_management_driver in ['systemd', 'systemd_user', 'launchd']
+    - runtime_action == 'stop'
+    - runtime_endpoint_port is defined
+    - runtime_endpoint_port is not none
+
+- name: Probe runtime endpoint during status refresh
+  ansible.builtin.wait_for:
+    host: "{{ runtime_probe_host | default('127.0.0.1') }}"
+    port: "{{ runtime_endpoint_port }}"
+    state: started
+    connect_timeout: 1
+    timeout: 2
+  register: runtime_endpoint_status
+  failed_when: false
+  when:
+    - runtime_management_driver in ['systemd', 'systemd_user', 'launchd']
+    - runtime_action == 'status'
+    - runtime_endpoint_port is defined
+    - runtime_endpoint_port is not none
+
+- name: Read launchd runtime status after control
+  ansible.builtin.command:
+    argv:
+      - /bin/launchctl
+      - print
+      - "{{ runtime_launchd_service }}"
+  register: runtime_launchd_status
+  changed_when: false
+  failed_when: false
+  no_log: true
+  when: runtime_management_driver == 'launchd'
+
+- name: Normalize observed runtime state
+  ansible.builtin.set_fact:
+    runtime_observed_state: >-
+      {% if runtime_action == 'stop' %}
+      stopped
+      {% elif runtime_management_driver == 'mock' %}
+      running
+      {% elif runtime_management_driver == 'launchd' %}
+      {% if runtime_launchd_status.rc == 0 and 'state = running' in runtime_launchd_status.stdout %}
+      {{ 'degraded' if runtime_action == 'status' and runtime_endpoint_status is defined and runtime_endpoint_status.failed | default(false) else 'running' }}
+      {% else %}
+      stopped
+      {% endif %}
+      {% else %}
+      {% if runtime_systemd_status.stdout | trim == 'active' %}
+      {{ 'degraded' if runtime_action == 'status' and runtime_endpoint_status is defined and runtime_endpoint_status.failed | default(false) else 'running' }}
+      {% else %}
+      stopped
+      {% endif %}
+      {% endif %}
+    runtime_endpoint_reachable: "{{ none if runtime_endpoint_port is not defined or runtime_endpoint_port is none else false if runtime_action == 'stop' else true if runtime_action in ['start', 'restart'] else not (runtime_endpoint_status.failed | default(false)) }}"
+
+- name: Return normalized runtime operation result
+  ansible.builtin.debug:
+    var: agentswatch_result
+  vars:
+    agentswatch_result:
+      action: "{{ runtime_action }}"
+      management_driver: "{{ runtime_management_driver }}"
+      management_target: "{{ runtime_management_target }}"
+      observed_status: "{{ runtime_observed_state | trim }}"
+      endpoint_port: "{{ runtime_endpoint_port | default(none) }}"
+      endpoint_reachable: "{{ runtime_endpoint_reachable }}"

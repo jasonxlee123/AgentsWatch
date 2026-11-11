@@ -1,0 +1,34 @@
+[Unit]
+Description=AgentsWatch MCP REST adapter (local test deployment)
+After=network-online.target agentswatch-management.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=agentswatch
+Group=agentswatch
+WorkingDirectory=/opt/agentswatch-management
+EnvironmentFile=/etc/agentswatch/management.env
+ExecStartPre=/usr/bin/test -S /data/agentswatch/management/run/api.sock
+ExecStartPre=/usr/bin/rm -f /data/agentswatch/management/run/mcp.sock
+ExecStart=/opt/agentswatch-management/.venv/bin/python /opt/agentswatch-management/deploy/management/mcp_socket_launcher.py
+Restart=on-failure
+RestartSec=3s
+TimeoutStopSec=30s
+KillSignal=SIGTERM
+UMask=0007
+
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/data/agentswatch/management/run
+RestrictAddressFamilies=AF_UNIX
+RestrictSUIDSGID=true
+LockPersonality=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+
+[Install]
+WantedBy=multi-user.target

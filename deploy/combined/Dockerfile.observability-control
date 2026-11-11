@@ -1,0 +1,36 @@
+FROM python:3.12-slim
+
+ARG AGENTSWATCH_UID=10001
+ARG AGENTSWATCH_GID=10001
+
+RUN apt-get update \
+    && apt-get install --no-install-recommends -y ca-certificates tini \
+    && rm -rf /var/lib/apt/lists/* \
+    && groupadd --gid "${AGENTSWATCH_GID}" agentswatch \
+    && useradd --uid "${AGENTSWATCH_UID}" --gid "${AGENTSWATCH_GID}" \
+        --home-dir /nonexistent --no-create-home --shell /usr/sbin/nologin agentswatch
+
+ENV VIRTUAL_ENV=/opt/agentswatch-venv \
+    PATH="/opt/agentswatch-venv/bin:${PATH}" \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    AGENTSWATCH_OBSERVABILITY_CONTROL_ROOT=/data/agentswatch/observability-control
+
+RUN python -m venv "${VIRTUAL_ENV}"
+
+WORKDIR /opt/agentswatch
+
+COPY requirements-observability-control.txt ./
+RUN pip install --no-cache-dir --upgrade pip \
+    && pip install --no-cache-dir -r requirements-observability-control.txt
+
+COPY --chown=agentswatch:agentswatch agentswatch_observability ./agentswatch_observability
+COPY --chown=agentswatch:agentswatch scripts/generate_lobster_configs.py ./scripts/generate_lobster_configs.py
+
+USER agentswatch:agentswatch
+
+HEALTHCHECK --interval=15s --timeout=3s --start-period=10s --retries=4 \
+    CMD python -c "from urllib.request import urlopen; r=urlopen('http://127.0.0.1:8011/healthz', timeout=2); assert r.status == 200"
+
+ENTRYPOINT ["tini", "--"]
+CMD ["python", "-m", "agentswatch_observability", "serve", "--host", "0.0.0.0", "--port", "8011"]

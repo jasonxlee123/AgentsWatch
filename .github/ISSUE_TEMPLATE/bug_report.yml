@@ -1,0 +1,57 @@
+name: Bug report
+description: Report a reproducible defect in AgentsWatch
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve AgentsWatch. Do not paste credentials, real
+        inventories, production DSNs, tokens, or private keys. Redact hostnames
+        and IP addresses before submitting.
+  - type: input
+    id: version
+    attributes:
+      label: Version / commit
+      description: Output of `cat VERSION` or the commit SHA.
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Management API / UI
+        - Automation / Task Center
+        - MCP
+        - Observability adapter
+        - Deployment / Compose
+        - Documentation
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Reproduction steps
+      description: Minimal, deterministic steps with redacted values.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior and relevant logs
+      description: Redact secrets and private endpoints.
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, Python, Node, Docker and deployment mode.

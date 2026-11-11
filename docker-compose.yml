@@ -1,0 +1,453 @@
+name: lobster-observability
+
+x-internal-no-proxy: &internal_no_proxy
+  HTTP_PROXY: ""
+  http_proxy: ""
+  HTTPS_PROXY: ""
+  https_proxy: ""
+  ALL_PROXY: ""
+  all_proxy: ""
+  NO_PROXY: localhost,127.0.0.1,::1,minio,prometheus,alertmanager,otel-collector,loki,tempo,clickhouse,thanos-sidecar,thanos-store,thanos-query,thanos-compact,grafana,host.docker.internal
+  no_proxy: localhost,127.0.0.1,::1,minio,prometheus,alertmanager,otel-collector,loki,tempo,clickhouse,thanos-sidecar,thanos-store,thanos-query,thanos-compact,grafana,host.docker.internal
+
+services:
+  storage-init:
+    image: ${MINIO_MC_IMAGE:-minio/mc:latest}
+    user: "0:0"
+    environment:
+      <<: *internal_no_proxy
+      AGENTSWATCH_OBSERVABILITY_CONTROL_UID: ${AGENTSWATCH_OBSERVABILITY_CONTROL_UID:-10001}
+      AGENTSWATCH_OBSERVABILITY_CONTROL_GID: ${AGENTSWATCH_OBSERVABILITY_CONTROL_GID:-10001}
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        set -eu
+        chown 0:0 /mnt/minio /mnt/thanos-store /mnt/thanos-compact
+        chown 101:101 /mnt/clickhouse
+        chown 65534:65534 /mnt/prometheus /mnt/alertmanager
+        chown 10001:10001 /mnt/otel-collector /mnt/loki /mnt/tempo
+        chown 472:0 /mnt/grafana
+        chmod 0750 /mnt/minio /mnt/clickhouse /mnt/prometheus /mnt/alertmanager \
+          /mnt/otel-collector /mnt/loki /mnt/tempo /mnt/grafana \
+          /mnt/thanos-store /mnt/thanos-compact
+        /bin/sh /usr/local/bin/bootstrap-observability-control-state \
+          /mnt/observability-control \
+          "$${AGENTSWATCH_OBSERVABILITY_CONTROL_UID}" \
+          "$${AGENTSWATCH_OBSERVABILITY_CONTROL_GID}"
+        echo "persistent data directories are ready"
+        ls -ldn /mnt/*
+    volumes:
+      - ${AGENTSWATCH_DATA_ROOT:-/data/agentswatch}/minio:/mnt/minio:z
+      - ${AGENTSWATCH_DATA_ROOT:-/data/agentswatch}/clickhouse:/mnt/clickhouse:z
+      - ${AGENTSWATCH_DATA_ROOT:-/data/agentswatch}/prometheus:/mnt/prometheus:z
+      - ${AGENTSWATCH_DATA_ROOT:-/data/agentswatch}/alertmanager:/mnt/alertmanager:z
+      - ${AGENTSWATCH_DATA_ROOT:-/data/agentswatch}/otel-collector:/mnt/otel-collector:z
+      - ${AGENTSWATCH_DATA_ROOT:-/data/agentswatch}/loki:/mnt/loki:z
+      - ${AGENTSWATCH_DATA_ROOT:-/data/agentswatch}/tempo:/mnt/tempo:z
+      - ${AGENTSWATCH_DATA_ROOT:-/data/agentswatch}/grafana:/mnt/grafana:z
+      - ${AGENTSWATCH_DATA_ROOT:-/data/agentswatch}/thanos-store:/mnt/thanos-store:z
+      - ${AGENTSWATCH_DATA_ROOT:-/data/agentswatch}/thanos-compact:/mnt/thanos-compact:z
+      - ${AGENTSWATCH_DATA_ROOT:-/data/agentswatch}/observability-control:/mnt/observability-control:z
+      - ./scripts/bootstrap_observability_control_state.sh:/usr/local/bin/bootstrap-observability-control-state:ro,z
+    restart: "no"
+
+  prometheus-secrets-init:
+    image: ${MINIO_MC_IMAGE:-minio/mc:latest}
+    user: "0:0"
+    environment:
+      <<: *internal_no_proxy
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        set -eu
+        mkdir -p /secrets/gateways
+        chown :65534 /secrets /secrets/gateways
+        chmod 2750 /secrets /secrets/gateways
+        for token_file in /secrets/gateways/*.token; do
+          [ -f "$${token_file}" ] || continue
+          chown :65534 "$${token_file}"
+          chmod 0640 "$${token_file}"
+        done
+        echo "Prometheus Gateway secrets are ready"
+        ls -ldn /secrets /secrets/gateways
+    volumes:
+      - ./prometheus/secrets:/secrets:z
+    restart: "no"
+
+  nginx-tls-init:
+    image: ${CLICKHOUSE_IMAGE:-clickhouse/clickhouse-server:latest}
+    user: "0:0"
+    environment:
+      <<: *internal_no_proxy
+      GRAFANA_PUBLIC_HOST: ${GRAFANA_PUBLIC_HOST:-localhost}
+      NGINX_SELF_SIGNED_DAYS: ${NGINX_SELF_SIGNED_DAYS:-825}
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        set -eu
+        cert=/certs/tls.crt
+        key=/certs/tls.key
+        if [ -s "$${cert}" ] && [ -s "$${key}" ] \
+          && openssl x509 -in "$${cert}" -noout -checkend 0 >/dev/null 2>&1 \
+          && openssl pkey -in "$${key}" -noout >/dev/null 2>&1; then
+          echo "existing TLS certificate is valid"
+          exit 0
+        fi
+        case "$${GRAFANA_PUBLIC_HOST}" in
+          *[!0-9.]*|'') subject_alt_name="DNS:$${GRAFANA_PUBLIC_HOST}" ;;
+          *) subject_alt_name="IP:$${GRAFANA_PUBLIC_HOST}" ;;
+        esac
+        umask 077
+        rm -f /certs/.tls.crt.tmp /certs/.tls.key.tmp
+        openssl req -x509 -nodes -newkey rsa:3072 -sha256 \
+          -days "$${NGINX_SELF_SIGNED_DAYS}" \
+          -keyout /certs/.tls.key.tmp \
+          -out /certs/.tls.crt.tmp \
+          -subj "/CN=$${GRAFANA_PUBLIC_HOST}" \
+          -addext "subjectAltName=$${subject_alt_name}" >/dev/null 2>&1
+        openssl x509 -in /certs/.tls.crt.tmp -noout -checkend 0
+        chmod 0600 /certs/.tls.key.tmp
+        chmod 0644 /certs/.tls.crt.tmp
+        mv /certs/.tls.key.tmp "$${key}"
+        mv /certs/.tls.crt.tmp "$${cert}"
+        echo "generated self-signed TLS certificate for $${GRAFANA_PUBLIC_HOST}"
+    volumes:
+      - ./nginx/certs:/certs:z
+    restart: "no"
+
+  minio:
+    image: ${MINIO_IMAGE:-minio/minio:latest}
+    command: server /data --console-address ":9001"
+    environment:
+      <<: *internal_no_proxy
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+    ports:
+      - "${ADMIN_BIND_ADDRESS:-127.0.0.1}:${MINIO_CONSOLE_PORT:-9001}:9001"
+    volumes:
+      - ${AGENTSWATCH_DATA_ROOT:-/data/agentswatch}/minio:/data:z
+    depends_on:
+      storage-init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  minio-init:
+    image: ${MINIO_MC_IMAGE:-minio/mc:latest}
+    depends_on:
+      minio:
+        condition: service_started
+    environment:
+      <<: *internal_no_proxy
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      THANOS_BUCKET: ${THANOS_BUCKET:-thanos}
+      TEMPO_BUCKET: ${TEMPO_BUCKET:-tempo}
+      LOKI_BUCKET: ${LOKI_BUCKET:-loki}
+    entrypoint: >
+      /bin/sh -c '
+        until mc alias set local http://minio:9000 "${MINIO_ROOT_USER:-minioadmin}" "${MINIO_ROOT_PASSWORD:-minioadmin}"; do sleep 2; done;
+        mc mb -p "local/${THANOS_BUCKET:-thanos}" || true;
+        mc mb -p "local/${TEMPO_BUCKET:-tempo}" || true;
+        mc mb -p "local/${LOKI_BUCKET:-loki}" || true;
+      '
+    restart: "no"
+
+  otel-collector:
+    image: ${OTEL_COLLECTOR_IMAGE:-otel/opentelemetry-collector-contrib:latest}
+    command: ["--config=/etc/otelcol-contrib/config.yaml"]
+    environment:
+      <<: *internal_no_proxy
+      OTEL_MEMORY_LIMIT_MIB: ${OTEL_MEMORY_LIMIT_MIB:-1024}
+      CLICKHOUSE_DATABASE: ${CLICKHOUSE_DATABASE:-otel}
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-otel}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-change-me}
+      CLICKHOUSE_TTL: ${CLICKHOUSE_TTL:-8760h}
+    ports:
+      - "${OTEL_BIND_ADDRESS:-0.0.0.0}:${OTEL_OTLP_HTTP_PORT:-4318}:4318"
+      - "${ADMIN_BIND_ADDRESS:-127.0.0.1}:${OTEL_HEALTH_PORT:-13133}:13133"
+    volumes:
+      - ./otel-collector/config.yaml:/etc/otelcol-contrib/config.yaml:ro,z
+      - ${AGENTSWATCH_DATA_ROOT:-/data/agentswatch}/otel-collector:/var/lib/otelcol:z
+    depends_on:
+      prometheus:
+        condition: service_started
+      tempo:
+        condition: service_started
+      loki:
+        condition: service_started
+      clickhouse:
+        condition: service_healthy
+      storage-init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  clickhouse:
+    image: ${CLICKHOUSE_IMAGE:-clickhouse/clickhouse-server:latest}
+    environment:
+      <<: *internal_no_proxy
+      CLICKHOUSE_DB: ${CLICKHOUSE_DATABASE:-otel}
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-otel}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-change-me}
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: "1"
+    ports:
+      - "${ADMIN_BIND_ADDRESS:-127.0.0.1}:${CLICKHOUSE_HTTP_PORT:-8123}:8123"
+      - "${ADMIN_BIND_ADDRESS:-127.0.0.1}:${CLICKHOUSE_NATIVE_PORT:-9002}:9000"
+    volumes:
+      - ${AGENTSWATCH_DATA_ROOT:-/data/agentswatch}/clickhouse:/var/lib/clickhouse:z
+    depends_on:
+      storage-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "clickhouse-client --user \"$${CLICKHOUSE_USER}\" --password \"$${CLICKHOUSE_PASSWORD}\" --query 'SELECT 1'"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    restart: unless-stopped
+
+  prometheus:
+    image: ${PROMETHEUS_IMAGE:-prom/prometheus:latest}
+    group_add:
+      - ${AGENTSWATCH_OBSERVABILITY_CONTROL_GID:-10001}
+    environment:
+      <<: *internal_no_proxy
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=${PROMETHEUS_RETENTION:-15d}
+      - --storage.tsdb.min-block-duration=2h
+      - --storage.tsdb.max-block-duration=2h
+      - --web.enable-lifecycle
+    ports:
+      - "${ADMIN_BIND_ADDRESS:-127.0.0.1}:${PROMETHEUS_PORT:-9090}:9090"
+    volumes:
+      - ${AGENTSWATCH_DATA_ROOT:-/data/agentswatch}/prometheus:/prometheus:z
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro,z
+      - ./prometheus/alerts:/etc/prometheus/alerts:ro,z
+      - ./prometheus/secrets:/etc/prometheus/secrets:ro,z
+      - ${AGENTSWATCH_DATA_ROOT:-/data/agentswatch}/observability-control:/etc/prometheus/agentswatch-control:ro,z
+    depends_on:
+      storage-init:
+        condition: service_completed_successfully
+      prometheus-secrets-init:
+        condition: service_completed_successfully
+      alertmanager:
+        condition: service_started
+    restart: unless-stopped
+
+  alertmanager:
+    image: ${ALERTMANAGER_IMAGE:-prom/alertmanager:latest}
+    environment:
+      <<: *internal_no_proxy
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+      - --storage.path=/alertmanager
+    ports:
+      - "${ADMIN_BIND_ADDRESS:-127.0.0.1}:${ALERTMANAGER_PORT:-9093}:9093"
+    volumes:
+      - ${AGENTSWATCH_DATA_ROOT:-/data/agentswatch}/alertmanager:/alertmanager:z
+      - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro,z
+    depends_on:
+      storage-init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  thanos-sidecar:
+    image: ${THANOS_IMAGE:-quay.io/thanos/thanos:v0.38.0}
+    user: "0:0"
+    environment:
+      <<: *internal_no_proxy
+    command:
+      - sidecar
+      - --tsdb.path=/prometheus
+      - --prometheus.url=http://prometheus:9090
+      - --grpc-address=0.0.0.0:10901
+      - --http-address=0.0.0.0:10902
+      - |-
+        --objstore.config=type: S3
+        config:
+          bucket: ${THANOS_BUCKET:-thanos}
+          endpoint: minio:9000
+          access_key: ${MINIO_ROOT_USER:-minioadmin}
+          secret_key: ${MINIO_ROOT_PASSWORD:-minioadmin}
+          insecure: true
+    volumes:
+      - ${AGENTSWATCH_DATA_ROOT:-/data/agentswatch}/prometheus:/prometheus:z
+    depends_on:
+      storage-init:
+        condition: service_completed_successfully
+      prometheus:
+        condition: service_started
+      minio-init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  thanos-store:
+    image: ${THANOS_IMAGE:-quay.io/thanos/thanos:v0.38.0}
+    user: "0:0"
+    environment:
+      <<: *internal_no_proxy
+    command:
+      - store
+      - --data-dir=/var/thanos/store
+      - --grpc-address=0.0.0.0:10901
+      - --http-address=0.0.0.0:10902
+      - |-
+        --objstore.config=type: S3
+        config:
+          bucket: ${THANOS_BUCKET:-thanos}
+          endpoint: minio:9000
+          access_key: ${MINIO_ROOT_USER:-minioadmin}
+          secret_key: ${MINIO_ROOT_PASSWORD:-minioadmin}
+          insecure: true
+    volumes:
+      - ${AGENTSWATCH_DATA_ROOT:-/data/agentswatch}/thanos-store:/var/thanos/store:z
+    depends_on:
+      storage-init:
+        condition: service_completed_successfully
+      minio-init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  thanos-compact:
+    image: ${THANOS_IMAGE:-quay.io/thanos/thanos:v0.38.0}
+    user: "0:0"
+    environment:
+      <<: *internal_no_proxy
+    command:
+      - compact
+      - --data-dir=/var/thanos/compact
+      - --wait
+      - --retention.resolution-raw=${THANOS_RETENTION_RAW:-90d}
+      - --retention.resolution-5m=${THANOS_RETENTION_5M:-730d}
+      - --retention.resolution-1h=${THANOS_RETENTION_1H:-1825d}
+      - |-
+        --objstore.config=type: S3
+        config:
+          bucket: ${THANOS_BUCKET:-thanos}
+          endpoint: minio:9000
+          access_key: ${MINIO_ROOT_USER:-minioadmin}
+          secret_key: ${MINIO_ROOT_PASSWORD:-minioadmin}
+          insecure: true
+    volumes:
+      - ${AGENTSWATCH_DATA_ROOT:-/data/agentswatch}/thanos-compact:/var/thanos/compact:z
+    depends_on:
+      storage-init:
+        condition: service_completed_successfully
+      minio-init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  thanos-query:
+    image: ${THANOS_IMAGE:-quay.io/thanos/thanos:v0.38.0}
+    user: "0:0"
+    environment:
+      <<: *internal_no_proxy
+    command:
+      - query
+      - --http-address=0.0.0.0:10902
+      - --grpc-address=0.0.0.0:10901
+      - --endpoint=thanos-sidecar:10901
+      - --endpoint=thanos-store:10901
+    ports:
+      - "${ADMIN_BIND_ADDRESS:-127.0.0.1}:${THANOS_QUERY_PORT:-10902}:10902"
+    depends_on:
+      - thanos-sidecar
+      - thanos-store
+    restart: unless-stopped
+
+  loki:
+    image: ${LOKI_IMAGE:-grafana/loki:latest}
+    command: ["-config.file=/etc/loki/loki-config.yaml", "-config.expand-env=true"]
+    environment:
+      <<: *internal_no_proxy
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      LOKI_BUCKET: ${LOKI_BUCKET:-loki}
+      LOKI_RETENTION: ${LOKI_RETENTION:-2160h}
+      LOKI_WAL_DISK_FULL_THRESHOLD: ${LOKI_WAL_DISK_FULL_THRESHOLD:-0.90}
+    volumes:
+      - ./loki/loki-config.yaml:/etc/loki/loki-config.yaml:ro,z
+      - ${AGENTSWATCH_DATA_ROOT:-/data/agentswatch}/loki:/loki:z
+    depends_on:
+      storage-init:
+        condition: service_completed_successfully
+      minio-init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  tempo:
+    image: ${TEMPO_IMAGE:-grafana/tempo:2.7.2}
+    command: ["-config.file=/etc/tempo/tempo.yaml", "-config.expand-env=true"]
+    environment:
+      <<: *internal_no_proxy
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      TEMPO_BUCKET: ${TEMPO_BUCKET:-tempo}
+      TEMPO_RETENTION: ${TEMPO_RETENTION:-720h}
+    volumes:
+      - ./tempo/tempo.yaml:/etc/tempo/tempo.yaml:ro,z
+      - ${AGENTSWATCH_DATA_ROOT:-/data/agentswatch}/tempo:/var/tempo:z
+    depends_on:
+      storage-init:
+        condition: service_completed_successfully
+      minio-init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  grafana:
+    image: ${GRAFANA_IMAGE:-grafana/grafana:latest}
+    environment:
+      <<: *internal_no_proxy
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_PLUGINS_PREINSTALL_DISABLED: "true"
+      GF_PLUGINS_PREINSTALL_AUTO_UPDATE: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_SERVER_ROOT_URL: ${GRAFANA_PUBLIC_URL:-https://localhost/}
+      GF_SECURITY_COOKIE_SECURE: "true"
+    ports:
+      - "${GRAFANA_BIND_ADDRESS:-127.0.0.1}:${GRAFANA_PORT:-3000}:3000"
+    volumes:
+      - ${AGENTSWATCH_DATA_ROOT:-/data/agentswatch}/grafana:/var/lib/grafana:z
+      - ./grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro,z
+      - ./grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro,z
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro,z
+    depends_on:
+      storage-init:
+        condition: service_completed_successfully
+      thanos-query:
+        condition: service_started
+      loki:
+        condition: service_started
+      tempo:
+        condition: service_started
+    restart: unless-stopped
+
+  nginx:
+    image: ${NGINX_IMAGE:-nginx:stable-alpine}
+    environment:
+      <<: *internal_no_proxy
+    ports:
+      - "${HTTPS_BIND_ADDRESS:-0.0.0.0}:${HTTPS_PORT:-443}:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro,z
+      - ./nginx/certs:/etc/nginx/certs:ro,z
+    depends_on:
+      nginx-tls-init:
+        condition: service_completed_successfully
+      grafana:
+        condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-check-certificate -q -O - https://127.0.0.1/nginx-health | grep -q '^ok$'"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped

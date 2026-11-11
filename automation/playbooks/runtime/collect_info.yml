@@ -1,0 +1,120 @@
+---
+- name: Collect runtime information
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Validate runtime collection inputs
+      ansible.builtin.assert:
+        that:
+          - runtime_family_code in ['openclaw', 'hermes']
+        fail_msg: Unsupported runtime family for information collection
+
+    - name: Select approved runtime command
+      ansible.builtin.set_fact:
+        runtime_command_name: "{{ 'openclaw' if runtime_family_code == 'openclaw' else 'hermes' }}"
+
+    - name: Locate runtime command
+      ansible.builtin.shell:
+        cmd: "command -v {{ runtime_command_name | quote }}"
+        executable: /bin/sh
+      register: runtime_command_location
+      changed_when: false
+      when:
+        - runtime_management_driver != 'mock'
+        - runtime_command_path is not defined or runtime_command_path is none or runtime_command_path | length == 0
+
+    - name: Inspect configured runtime command
+      ansible.builtin.stat:
+        path: "{{ runtime_command_path }}"
+        follow: true
+      register: runtime_configured_command
+      when:
+        - runtime_management_driver != 'mock'
+        - runtime_command_path is defined
+        - runtime_command_path is not none
+        - runtime_command_path | length > 0
+
+    - name: Validate configured runtime command
+      ansible.builtin.assert:
+        that:
+          - runtime_configured_command.stat.exists | default(false)
+          - runtime_configured_command.stat.isreg | default(false)
+          - runtime_configured_command.stat.executable | default(false)
+        fail_msg: "Configured runtime command is missing or not executable: {{ runtime_command_path }}"
+      when:
+        - runtime_management_driver != 'mock'
+        - runtime_command_path is defined
+        - runtime_command_path is not none
+        - runtime_command_path | length > 0
+
+    - name: Resolve real runtime command path
+      ansible.builtin.set_fact:
+        runtime_resolved_command_path: >-
+          {{ runtime_command_path if runtime_command_path is defined and runtime_command_path is not none and runtime_command_path | length > 0
+             else runtime_command_location.stdout | trim }}
+      when: runtime_management_driver != 'mock'
+
+    - name: Read runtime version
+      ansible.builtin.command:
+        argv:
+          - "{{ runtime_resolved_command_path }}"
+          - --version
+      register: runtime_version_command
+      changed_when: false
+      when: runtime_management_driver != 'mock'
+
+    - name: Build deterministic mock observation
+      ansible.builtin.set_fact:
+        runtime_resolved_command_path: /mock/runtime
+        runtime_version_output: "{{ runtime_family_code | capitalize }} 1.0.0"
+      when: runtime_management_driver == 'mock'
+
+    - name: Normalize real command observation
+      ansible.builtin.set_fact:
+        runtime_version_output: "{{ runtime_version_command.stdout | trim }}"
+      when: runtime_management_driver != 'mock'
+
+    - name: Extract runtime version
+      ansible.builtin.set_fact:
+        runtime_version_matches: "{{ runtime_version_output | regex_findall('[0-9]+(?:\\.[0-9A-Za-z_-]+)+') }}"
+
+    - name: Inspect runtime config path
+      ansible.builtin.stat:
+        path: "{{ runtime_config_path }}"
+      register: runtime_config_stat
+      when: runtime_config_path is defined and runtime_config_path | length > 0
+
+    - name: Inspect runtime state path
+      ansible.builtin.stat:
+        path: "{{ runtime_state_path }}"
+      register: runtime_state_stat
+      when: runtime_state_path is defined and runtime_state_path | length > 0
+
+    - name: Probe configured runtime endpoint
+      ansible.builtin.wait_for:
+        host: "{{ runtime_probe_host | default('127.0.0.1') }}"
+        port: "{{ runtime_endpoint_port }}"
+        state: started
+        connect_timeout: 1
+        timeout: 2
+      register: runtime_collection_endpoint
+      failed_when: false
+      when: runtime_endpoint_port is defined and runtime_endpoint_port is not none
+
+    - name: Return normalized runtime information
+      ansible.builtin.debug:
+        var: agentswatch_result
+      vars:
+        agentswatch_result:
+          runtime_family_code: "{{ runtime_family_code }}"
+          actual_version: "{{ (runtime_version_matches | first) | default(runtime_version_output, true) }}"
+          command_path: "{{ runtime_resolved_command_path }}"
+          version_output: "{{ runtime_version_output }}"
+          config_path: "{{ runtime_config_path | default(none) }}"
+          config_exists: "{{ runtime_config_stat.stat.exists | default(false) }}"
+          state_path: "{{ runtime_state_path | default(none) }}"
+          state_exists: "{{ runtime_state_stat.stat.exists | default(false) }}"
+          endpoint_port: "{{ runtime_endpoint_port | default(none) }}"
+          endpoint_reachable: "{{ none if runtime_endpoint_port is not defined or runtime_endpoint_port is none else not (runtime_collection_endpoint.failed | default(false)) }}"
+          observed_agent_count: null
+          collected_at: "{{ now(utc=true, fmt='%Y-%m-%dT%H:%M:%SZ') }}"

@@ -1,0 +1,133 @@
+groups:
+  - name: openclaw.lobster.ops
+    rules:
+      - record: lobster:up:sum
+        expr: sum by (cluster, gateway_id, env, region, team, deployment_mode, service_mode, lobster_name, department) (up{job="openclaw-gateways"})
+
+      - record: lobster:tokens_total:sum
+        expr: |
+          sum by (cluster, gateway_id, deployment_environment, region, team, deployment_mode, openclaw_provider, openclaw_model, openclaw_agent, openclaw_channel, openclaw_token) (
+            openclaw_tokens_total{job="openclaw-gateway"}
+          )
+
+      - record: lobster:cost_usd_total:sum
+        expr: |
+          sum by (cluster, gateway_id, deployment_environment, region, team, deployment_mode, openclaw_provider, openclaw_model, openclaw_channel) (
+            openclaw_cost_usd_total{job="openclaw-gateway"}
+          )
+
+      - record: lobster:model_call_total:sum
+        expr: |
+          sum by (cluster, gateway_id, deployment_environment, region, team, deployment_mode, openclaw_provider, openclaw_model, openclaw_error_category, openclaw_failure_kind, openclaw_api, openclaw_transport) (
+            openclaw_model_call_duration_ms_milliseconds_count{job="openclaw-gateway"}
+          )
+
+      - record: lobster:session_turn_created_total:sum
+        expr: |
+          sum by (cluster, gateway_id, deployment_environment, region, team, deployment_mode, openclaw_agent, openclaw_channel, openclaw_trigger) (
+            openclaw_session_turn_created_total{job="openclaw-gateway"}
+          )
+
+      - record: lobster:otel_active:sum
+        expr: max by (cluster, gateway_id, deployment_environment, region, team, deployment_mode) (target_info{job="openclaw-gateway"})
+
+      - record: lobster:queue_depth:avg5m
+        expr: |
+          sum by (cluster, gateway_id, openclaw_lane) (rate(openclaw_queue_depth_sum{job="openclaw-gateway"}[5m]))
+          /
+          clamp_min(sum by (cluster, gateway_id, openclaw_lane) (rate(openclaw_queue_depth_count{job="openclaw-gateway"}[5m])), 0.000001)
+
+      - record: lobster:memory_rss_bytes:avg5m
+        expr: |
+          sum by (cluster, gateway_id) (rate(openclaw_memory_rss_bytes_sum{job="openclaw-gateway"}[5m]))
+          /
+          clamp_min(sum by (cluster, gateway_id) (rate(openclaw_memory_rss_bytes_count{job="openclaw-gateway"}[5m])), 0.000001)
+
+  - name: openclaw.lobster.availability
+    rules:
+      - alert: LobsterPrometheusScrapeDown
+        expr: up{job="openclaw-gateways",native_scrape_expected="true"} == 0
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Native Prometheus scrape is down for {{ $labels.gateway_id }}"
+          description: "The protected diagnostics-prometheus route is unreachable; OTel metrics may still be healthy."
+
+      - alert: LobsterOtelTelemetryMissing
+        expr: |
+          max by (cluster, gateway_id) (max_over_time(target_info{job="openclaw-gateway"}[24h]))
+          unless on (cluster, gateway_id)
+          max by (cluster, gateway_id) (target_info{job="openclaw-gateway"})
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "OTel telemetry is missing for {{ $labels.gateway_id }}"
+          description: "A Gateway seen during the last 24 hours is no longer present on the Collector Prometheus bridge."
+
+      - alert: OTelCollectorExporterFailures
+        expr: rate(otelcol_exporter_send_failed_spans[5m]) > 0 or rate(otelcol_exporter_send_failed_metric_points[5m]) > 0 or rate(otelcol_exporter_send_failed_log_records[5m]) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "OpenTelemetry Collector is dropping or failing exports"
+          description: "Collector exporter failures are non-zero for 5 minutes."
+
+  - name: openclaw.lobster.runtime
+    rules:
+      - alert: OpenClawSessionStuck
+        expr: sum by (cluster, gateway_id) (increase(openclaw_session_stuck_total{job="openclaw-gateway"}[10m])) > 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Stuck sessions detected on {{ $labels.gateway_id }}"
+          description: "openclaw_session_stuck_total increased in the last 10 minutes."
+
+      - alert: OpenClawDiagnosticQueueDropping
+        expr: sum by (cluster, gateway_id) (increase(openclaw_diagnostic_async_queue_dropped_total{job="openclaw-gateway"}[5m])) > 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Diagnostic queue is dropping data on {{ $labels.gateway_id }}"
+          description: "Telemetry queue dropped records in the last 5 minutes."
+
+      - alert: OpenClawPrometheusSeriesDropped
+        expr: sum by (cluster, gateway_id) (increase(openclaw_prometheus_series_dropped_total{job="openclaw-gateways"}[10m])) > 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Prometheus series dropped on {{ $labels.gateway_id }}"
+          description: "High-cardinality protection dropped series in the last 10 minutes."
+
+  - name: openclaw.lobster.model
+    rules:
+      - alert: OpenClawModelCallHighErrorRate
+        expr: |
+          (
+            sum by (cluster, gateway_id, openclaw_provider, openclaw_model) (rate(openclaw_model_call_duration_ms_milliseconds_count{job="openclaw-gateway",openclaw_error_category=~".+"}[5m]))
+            /
+            clamp_min(sum by (cluster, gateway_id, openclaw_provider, openclaw_model) (rate(openclaw_model_call_duration_ms_milliseconds_count{job="openclaw-gateway"}[5m])), 0.000001)
+          ) > 0.05
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High model call error rate on {{ $labels.gateway_id }}"
+          description: "{{ $labels.openclaw_provider }}/{{ $labels.openclaw_model }} error rate is above 5% for 10 minutes."
+
+      - alert: OpenClawTokenBurnSpike
+        expr: |
+          sum by (cluster, gateway_id) (increase(openclaw_tokens_total{job="openclaw-gateway",openclaw_token="total"}[1h]))
+          >
+          3 * clamp_min(sum by (cluster, gateway_id) (increase(openclaw_tokens_total{job="openclaw-gateway",openclaw_token="total"}[1h] offset 1d)), 1)
+        for: 15m
+        labels:
+          severity: info
+        annotations:
+          summary: "Token usage spike on {{ $labels.gateway_id }}"
+          description: "The last hour token usage is more than 3x the same hour yesterday."

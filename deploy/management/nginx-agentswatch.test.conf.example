@@ -1,0 +1,47 @@
+# Loopback-only test ingress for the management deployment. Run it in a
+# dedicated Nginx process/container; never merge it into the observability
+# Nginx. The host must publish container port 8080 only on 127.0.0.1.
+
+server {
+    listen 8080;
+    server_name _;
+
+    location = / {
+        return 308 /agentswatch/;
+    }
+
+    location = /agentswatch {
+        return 308 /agentswatch/;
+    }
+
+    location ^~ /agentswatch/ {
+        proxy_pass http://unix:/data/agentswatch/management/run/api.sock:/;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_connect_timeout 5s;
+        proxy_read_timeout 60s;
+    }
+
+    location = /agentswatch-mcp {
+        return 308 /agentswatch-mcp/;
+    }
+
+    location ^~ /agentswatch-mcp/ {
+        proxy_pass http://unix:/data/agentswatch/management/run/mcp.sock:/;
+        proxy_http_version 1.1;
+        proxy_set_header Host 127.0.0.1:8010;
+        proxy_set_header Origin http://127.0.0.1:8010;
+        proxy_set_header Authorization $http_authorization;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_buffering off;
+        proxy_cache off;
+        proxy_connect_timeout 5s;
+        proxy_read_timeout 300s;
+        proxy_send_timeout 300s;
+    }
+}

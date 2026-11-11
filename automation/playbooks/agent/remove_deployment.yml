@@ -1,0 +1,269 @@
+---
+- name: Remove AgentsWatch channel management from an OpenClaw deployment
+  hosts: all
+  gather_facts: false
+  environment:
+    OPENCLAW_CONFIG_PATH: "{{ runtime_config_path }}"
+    OPENCLAW_STATE_DIR: "{{ runtime_state_path }}"
+  vars:
+    agentswatch_cleanup_definitions: "{{ agentswatch_retired_agent_definitions | default([]) }}"
+    agentswatch_cleanup_account_ids: "{{ agentswatch_cleanup_definitions | map(attribute='channel_account_id') | list }}"
+    agentswatch_cleanup_agent_keys: "{{ agentswatch_cleanup_definitions | map(attribute='runtime_agent_key') | list }}"
+    agentswatch_cleanup_primary_definition: "{{ agentswatch_cleanup_definitions | selectattr('structure_role', 'equalto', 'primary') | list | first }}"
+    agentswatch_cleanup_mode: "{{ agentswatch_ownership_cleanup_mode | default('required') }}"
+    agentswatch_ownership_directory: "{{ runtime_state_path }}/.agentswatch"
+    agentswatch_ownership_file: "{{ agentswatch_ownership_directory }}/agent-ownership.json"
+  tasks:
+    - name: Validate controlled deployment removal inputs
+      ansible.builtin.assert:
+        that:
+          - runtime_family_code == "openclaw"
+          - runtime_config_path | length > 0
+          - runtime_state_path | length > 0
+          - runtime_management_driver in ['systemd', 'systemd_user', 'launchd', 'mock']
+          - runtime_management_target | length > 0
+          - agentswatch_cleanup_definitions | length > 0
+          - agentswatch_cleanup_definitions | selectattr('structure_role', 'equalto', 'primary') | list | length == 1
+          - agentswatch_cleanup_mode in ['required', 'compensation']
+        fail_msg: "deployment removal requires a managed OpenClaw runtime and deployment definitions"
+
+    - name: Inspect AgentsWatch runtime ownership registry before cleanup
+      ansible.builtin.stat:
+        path: "{{ agentswatch_ownership_file }}"
+      register: agentswatch_ownership_before
+
+    - name: Snapshot AgentsWatch runtime ownership registry before cleanup
+      ansible.builtin.slurp:
+        path: "{{ agentswatch_ownership_file }}"
+      register: agentswatch_ownership_snapshot
+      when: agentswatch_ownership_before.stat.exists
+      no_log: true
+
+    - name: Normalize AgentsWatch runtime ownership registry before cleanup
+      ansible.builtin.set_fact:
+        agentswatch_ownership_registry_before: >-
+          {{ (agentswatch_ownership_snapshot.content | b64decode | from_json) if agentswatch_ownership_before.stat.exists else {} }}
+      no_log: true
+
+    - name: Inventory cleanup ownership markers
+      ansible.builtin.set_fact:
+        agentswatch_registered_cleanup_agent_keys: >-
+          {{ agentswatch_cleanup_agent_keys | intersect(agentswatch_ownership_registry_before.keys() | list) }}
+        agentswatch_owned_cleanup_agent_keys: >-
+          {{ agentswatch_cleanup_agent_keys | intersect(
+            agentswatch_ownership_registry_before | dict2items
+            | selectattr('value.primary_agent_id', 'defined')
+            | selectattr('value.primary_agent_id', 'equalto', agentswatch_cleanup_primary_definition.agent_id)
+            | map(attribute='key') | list
+          ) }}
+      no_log: true
+
+    - name: Resolve cleanup ownership authorization
+      ansible.builtin.set_fact:
+        agentswatch_cleanup_authorized: >-
+          {{
+            agentswatch_owned_cleanup_agent_keys | length
+            == agentswatch_cleanup_agent_keys | length
+          }}
+        agentswatch_cleanup_safe_noop: >-
+          {{
+            agentswatch_cleanup_mode == 'compensation'
+            and agentswatch_registered_cleanup_agent_keys | length == 0
+          }}
+      no_log: true
+
+    - name: Reject missing partial or foreign cleanup ownership
+      ansible.builtin.assert:
+        that:
+          - agentswatch_cleanup_authorized | bool or agentswatch_cleanup_safe_noop | bool
+        fail_msg: >-
+          runtime ownership is missing, partial, or belongs to another primary agent;
+          refusing remote cleanup (sync/adopt the source relationship first)
+
+    - name: Inspect original OpenClaw configuration
+      ansible.builtin.stat:
+        path: "{{ runtime_config_path }}"
+      register: agentswatch_config_before
+      when: agentswatch_cleanup_authorized | bool
+      no_log: true
+
+    - name: Snapshot original OpenClaw configuration in memory
+      ansible.builtin.slurp:
+        path: "{{ runtime_config_path }}"
+      register: agentswatch_config_snapshot
+      when:
+        - agentswatch_cleanup_authorized | bool
+        - agentswatch_config_before.stat.exists
+      no_log: true
+
+    - name: Apply channel cleanup transaction
+      when: agentswatch_cleanup_authorized | bool
+      block:
+        - name: Read installed OpenClaw plugins
+          ansible.builtin.command:
+            argv: ["openclaw", "plugins", "list", "--json"]
+          register: openclaw_plugins_before
+          changed_when: false
+
+        - name: Extract installed plugin ids
+          ansible.builtin.set_fact:
+            openclaw_plugin_ids: "{{ ((openclaw_plugins_before.stdout | from_json).plugins | default([])) | map(attribute='id') | list }}"
+
+        - name: Remove AgentsWatch Feishu bindings without deleting agents
+          ansible.builtin.command:
+            argv:
+              - openclaw
+              - agents
+              - unbind
+              - --agent
+              - "{{ item.runtime_agent_key }}"
+              - --bind
+              - "feishu:{{ item.channel_account_id }}"
+              - --json
+          loop: "{{ agentswatch_cleanup_definitions }}"
+          loop_control:
+            label: "{{ item.runtime_agent_key }}"
+          register: feishu_unbind_results
+          failed_when: false
+          changed_when: >-
+            feishu_unbind_results.rc == 0
+            and ((feishu_unbind_results.stdout | from_json).removed | default([]) | length > 0)
+
+        - name: Delete AgentsWatch-managed Feishu accounts without deleting workspaces
+          ansible.builtin.command:
+            argv:
+              - openclaw
+              - channels
+              - remove
+              - --channel
+              - feishu
+              - --account
+              - "{{ item.channel_account_id }}"
+              - --delete
+          loop: "{{ agentswatch_cleanup_definitions }}"
+          loop_control:
+            label: "{{ item.channel_account_id }}"
+          register: feishu_remove_results
+          failed_when: false
+          changed_when: feishu_remove_results.rc == 0
+          when: "'feishu' in (openclaw_plugin_ids | default([]))"
+          no_log: true
+
+        - name: Validate resulting OpenClaw configuration
+          ansible.builtin.command:
+            argv: ["openclaw", "config", "validate", "--json"]
+          changed_when: false
+
+        - name: Read final OpenClaw agent bindings
+          ansible.builtin.command:
+            argv: ["openclaw", "agents", "bindings", "--json"]
+          register: bindings_after
+          changed_when: false
+
+        - name: Read final Feishu account configuration
+          ansible.builtin.command:
+            argv: ["openclaw", "config", "get", "channels.feishu.accounts", "--json"]
+          register: accounts_after
+          changed_when: false
+          failed_when: false
+          no_log: true
+
+        - name: Normalize remaining managed channel references
+          ansible.builtin.set_fact:
+            agentswatch_remaining_binding_account_ids: >-
+              {{
+                (bindings_after.stdout | from_json)
+                | selectattr('match', 'defined')
+                | map(attribute='match.accountId')
+                | select('defined')
+                | list
+              }}
+            agentswatch_remaining_feishu_accounts: >-
+              {{ ((accounts_after.stdout | from_json) | default({}, true)) if accounts_after.rc == 0 and accounts_after.stdout | trim | length > 0 else {} }}
+          no_log: true
+
+        - name: Verify managed channel cleanup completed
+          ansible.builtin.assert:
+            that:
+              - agentswatch_cleanup_account_ids | intersect(agentswatch_remaining_binding_account_ids) | length == 0
+              - agentswatch_cleanup_account_ids | intersect(agentswatch_remaining_feishu_accounts.keys() | list) | length == 0
+            fail_msg: "one or more AgentsWatch-managed Feishu bindings or accounts remain configured"
+          no_log: true
+
+        - name: Decide whether the shared runtime requires restart
+          ansible.builtin.set_fact:
+            agentswatch_runtime_restart_required: >-
+              {{
+                (feishu_unbind_results is changed)
+                or (feishu_remove_results is defined and feishu_remove_results is changed)
+              }}
+
+        - name: Restart shared runtime after channel cleanup
+          ansible.builtin.include_role:
+            name: runtime_control
+          vars:
+            runtime_action: restart
+          when: agentswatch_runtime_restart_required | bool
+
+        - name: Publish normalized deployment removal result
+          ansible.builtin.debug:
+            var: agentswatch_result
+          vars:
+            agentswatch_result:
+              runtime_family_code: "{{ runtime_family_code }}"
+              retained_agent_keys: "{{ agentswatch_cleanup_definitions | map(attribute='runtime_agent_key') | list }}"
+              removed_channel_account_ids: "{{ agentswatch_cleanup_account_ids }}"
+              runtime_restarted: "{{ agentswatch_runtime_restart_required | bool }}"
+              agents_deleted: false
+              workspaces_deleted: false
+              cleanup_not_required: false
+              skipped_no_ownership: false
+              ownership_authorized: true
+      rescue:
+        - name: Restore original OpenClaw configuration after cleanup failure
+          ansible.builtin.copy:
+            content: "{{ agentswatch_config_snapshot.content | b64decode }}"
+            dest: "{{ runtime_config_path }}"
+            mode: "{{ agentswatch_config_before.stat.mode | default('0600') }}"
+          when: agentswatch_config_before.stat.exists
+          no_log: true
+
+        - name: Remove configuration created by failed cleanup
+          ansible.builtin.file:
+            path: "{{ runtime_config_path }}"
+            state: absent
+          when: not agentswatch_config_before.stat.exists
+          no_log: true
+
+        - name: Validate restored OpenClaw configuration
+          ansible.builtin.command:
+            argv: ["openclaw", "config", "validate", "--json"]
+          changed_when: false
+          when: agentswatch_config_before.stat.exists
+
+        - name: Restart runtime after restoring cleanup snapshot
+          ansible.builtin.include_role:
+            name: runtime_control
+          vars:
+            runtime_action: restart
+          when: agentswatch_config_before.stat.exists
+
+        - name: Report cleanup rollback
+          ansible.builtin.fail:
+            msg: "deployment channel cleanup failed; the original OpenClaw configuration was restored"
+
+    - name: Publish ownership-gated cleanup no-op
+      ansible.builtin.debug:
+        var: agentswatch_result
+      vars:
+        agentswatch_result:
+          runtime_family_code: "{{ runtime_family_code }}"
+          retained_agent_keys: "{{ agentswatch_cleanup_definitions | map(attribute='runtime_agent_key') | list }}"
+          removed_channel_account_ids: []
+          runtime_restarted: false
+          agents_deleted: false
+          workspaces_deleted: false
+          cleanup_not_required: true
+          skipped_no_ownership: true
+          ownership_authorized: false
+      when: agentswatch_cleanup_safe_noop | bool

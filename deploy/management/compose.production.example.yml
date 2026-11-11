@@ -1,0 +1,107 @@
+name: agentswatch-management
+
+services:
+  management-api:
+    image: "${AGENTSWATCH_MANAGEMENT_IMAGE:?set AGENTSWATCH_MANAGEMENT_IMAGE}"
+    restart: unless-stopped
+    user: "10001:10001"
+    read_only: true
+    environment:
+      AGENTSWATCH_DATABASE_URL: "${AGENTSWATCH_DATABASE_URL:?set AGENTSWATCH_DATABASE_URL}"
+      AGENTSWATCH_WRITE_DATABASE_URL: "${AGENTSWATCH_WRITE_DATABASE_URL:?set AGENTSWATCH_WRITE_DATABASE_URL}"
+      AGENTSWATCH_WEB_CREDENTIAL_KEY: "${AGENTSWATCH_WEB_CREDENTIAL_KEY:?set AGENTSWATCH_WEB_CREDENTIAL_KEY}"
+      AGENTSWATCH_SSH_CREDENTIAL_KEY: "${AGENTSWATCH_SSH_CREDENTIAL_KEY:?set AGENTSWATCH_SSH_CREDENTIAL_KEY}"
+      AGENTSWATCH_WEB_ACCESS_TTL_SECONDS: "${AGENTSWATCH_WEB_ACCESS_TTL_SECONDS:-900}"
+      AGENTSWATCH_CREDENTIAL_FILE_MAP: "${AGENTSWATCH_CREDENTIAL_FILE_MAP:?set AGENTSWATCH_CREDENTIAL_FILE_MAP to a JSON object}"
+      AGENTSWATCH_DEFAULT_SSH_CREDENTIAL_REF: "${AGENTSWATCH_DEFAULT_SSH_CREDENTIAL_REF:-agentswatch-managed}"
+      AGENTSWATCH_DEFAULT_SSH_PRIVATE_KEY_FILE: /data/agentswatch/management/credentials/agentswatch-managed
+      AGENTSWATCH_OBSERVABILITY_CONTROL_URL: "${AGENTSWATCH_OBSERVABILITY_CONTROL_URL:-}"
+      AGENTSWATCH_OBSERVABILITY_CONTROL_TOKEN: "${AGENTSWATCH_OBSERVABILITY_CONTROL_TOKEN:-}"
+      AGENTSWATCH_ENABLE_MANAGEMENT: "true"
+      AGENTSWATCH_ALLOW_LOCAL_CONNECTION: "false"
+      AGENTSWATCH_SESSION_COOKIE_SECURE: "true"
+      AGENTSWATCH_SESSION_COOKIE_PATH: /agentswatch/
+      AGENTSWATCH_MANAGEMENT_DATA_ROOT: /data/agentswatch/management
+      AGENTSWATCH_AUTOMATION_DATA_ROOT: /data/agentswatch/management/automation
+      AGENTSWATCH_STATIC_DIR: /opt/agentswatch/frontend-dist
+      AGENTSWATCH_NGINX_GID: "${AGENTSWATCH_NGINX_GID:-101}"
+      PGSSLMODE: verify-full
+      PGSSLROOTCERT: /run/secrets/agentswatch-database-ca.crt
+      HOME: /data/agentswatch/management/home
+    volumes:
+      - "${AGENTSWATCH_MANAGEMENT_DATA_HOST_ROOT:-/srv/agentswatch/management}:/data/agentswatch/management:z"
+      - "${AGENTSWATCH_DATABASE_CA_HOST_FILE:?set AGENTSWATCH_DATABASE_CA_HOST_FILE}:/run/secrets/agentswatch-database-ca.crt:ro"
+      # Keep API/MCP sockets inside this Compose project. This volume is never
+      # attached to the independently deployed observability stack.
+      - management-run:/data/agentswatch/management/run
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=128m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 512
+    stop_grace_period: 30s
+
+  management-mcp:
+    image: "${AGENTSWATCH_MANAGEMENT_IMAGE:?set AGENTSWATCH_MANAGEMENT_IMAGE}"
+    restart: unless-stopped
+    user: "10001:10001"
+    read_only: true
+    entrypoint: ["tini", "--"]
+    command: ["python", "/usr/local/bin/agentswatch-mcp-socket-launcher"]
+    environment:
+      AGENTSWATCH_API_BASE_URL: http://agentswatch-api
+      AGENTSWATCH_API_UDS: /data/agentswatch/management/run/api.sock
+      AGENTSWATCH_MCP_REQUEST_TIMEOUT: "${AGENTSWATCH_MCP_REQUEST_TIMEOUT:-30}"
+      AGENTSWATCH_MCP_TLS_VERIFY: "false"
+    volumes:
+      - management-run:/data/agentswatch/management/run
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=32m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 128
+    stop_grace_period: 15s
+    depends_on:
+      management-api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; s=socket.socket(socket.AF_UNIX); s.settimeout(2); s.connect('/data/agentswatch/management/run/mcp.sock'); s.sendall(b'GET /healthz HTTP/1.0\\r\\nHost: 127.0.0.1:8010\\r\\n\\r\\n'); response=s.recv(256); s.close(); assert b' 200 ' in response.split(b'\\r\\n', 1)[0]"]
+      interval: 15s
+      timeout: 3s
+      start_period: 10s
+      retries: 4
+
+  management-nginx:
+    image: ${AGENTSWATCH_MANAGEMENT_NGINX_IMAGE:-nginx:stable-alpine}
+    restart: unless-stopped
+    read_only: true
+    ports:
+      - "${AGENTSWATCH_MANAGEMENT_BIND_ADDRESS:-0.0.0.0}:${AGENTSWATCH_MANAGEMENT_HTTPS_PORT:-8443}:8443"
+    volumes:
+      - management-run:/data/agentswatch/management/run:ro
+      - ./nginx-agentswatch.conf.example:/etc/nginx/conf.d/default.conf:ro
+      - "${AGENTSWATCH_MANAGEMENT_TLS_DIR:-/etc/agentswatch-management/tls}:/etc/agentswatch-management/tls:ro"
+    tmpfs:
+      - /var/cache/nginx:rw,noexec,nosuid,nodev,size=32m
+      - /var/run:rw,noexec,nosuid,nodev,size=1m
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 128
+    depends_on:
+      management-api:
+        condition: service_healthy
+      management-mcp:
+        condition: service_healthy
+
+volumes:
+  management-run: {}

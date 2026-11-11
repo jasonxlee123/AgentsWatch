@@ -1,0 +1,15 @@
+**
+
+!requirements-observability-control.txt
+!agentswatch_observability/
+!agentswatch_observability/**
+!scripts/
+!scripts/generate_lobster_configs.py
+
+.git/
+**/__pycache__/
+**/*.pyc
+**/.env
+**/.env.*
+**/*secret*
+**/*private_key*

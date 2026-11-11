@@ -1,0 +1,8 @@
+[
+  {
+    "server_id": "local-test-server",
+    "address": "127.0.0.1",
+    "connection": "local",
+    "python_interpreter": "/usr/bin/python3"
+  }
+]

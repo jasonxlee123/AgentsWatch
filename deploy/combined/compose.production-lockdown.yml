@@ -1,0 +1,113 @@
+# Production-only fail-closed overlay for operations images and credentials.
+# Append this after compose.production.example.yml. Development deployments keep
+# using the defaults in the root Compose file; production must provide every
+# value below explicitly and use only already loaded, approved images.
+
+services:
+  storage-init:
+    image: "${MINIO_MC_IMAGE:?set MINIO_MC_IMAGE to the approved, already loaded image}"
+    pull_policy: never
+
+  prometheus-secrets-init:
+    image: "${MINIO_MC_IMAGE:?set MINIO_MC_IMAGE to the approved, already loaded image}"
+    pull_policy: never
+
+  nginx-tls-init:
+    image: "${CLICKHOUSE_IMAGE:?set CLICKHOUSE_IMAGE to the approved, already loaded image}"
+    pull_policy: never
+
+  minio:
+    image: "${MINIO_IMAGE:?set MINIO_IMAGE to the approved, already loaded image}"
+    pull_policy: never
+    environment:
+      MINIO_ROOT_USER: "${MINIO_ROOT_USER:?set MINIO_ROOT_USER}"
+      MINIO_ROOT_PASSWORD: "${MINIO_ROOT_PASSWORD:?set a non-default MINIO_ROOT_PASSWORD}"
+
+  minio-init:
+    image: "${MINIO_MC_IMAGE:?set MINIO_MC_IMAGE to the approved, already loaded image}"
+    pull_policy: never
+    environment:
+      MINIO_ROOT_USER: "${MINIO_ROOT_USER:?set MINIO_ROOT_USER}"
+      MINIO_ROOT_PASSWORD: "${MINIO_ROOT_PASSWORD:?set a non-default MINIO_ROOT_PASSWORD}"
+
+  otel-collector:
+    image: "${OTEL_COLLECTOR_IMAGE:?set OTEL_COLLECTOR_IMAGE to the approved, already loaded image}"
+    pull_policy: never
+    environment:
+      CLICKHOUSE_USER: "${CLICKHOUSE_USER:?set CLICKHOUSE_USER}"
+      CLICKHOUSE_PASSWORD: "${CLICKHOUSE_PASSWORD:?set a non-default CLICKHOUSE_PASSWORD}"
+
+  clickhouse:
+    image: "${CLICKHOUSE_IMAGE:?set CLICKHOUSE_IMAGE to the approved, already loaded image}"
+    pull_policy: never
+    environment:
+      CLICKHOUSE_USER: "${CLICKHOUSE_USER:?set CLICKHOUSE_USER}"
+      CLICKHOUSE_PASSWORD: "${CLICKHOUSE_PASSWORD:?set a non-default CLICKHOUSE_PASSWORD}"
+
+  prometheus:
+    image: "${PROMETHEUS_IMAGE:?set PROMETHEUS_IMAGE to the approved, already loaded image}"
+    pull_policy: never
+
+  alertmanager:
+    image: "${ALERTMANAGER_IMAGE:?set ALERTMANAGER_IMAGE to the approved, already loaded image}"
+    pull_policy: never
+
+  thanos-sidecar:
+    image: "${THANOS_IMAGE:?set THANOS_IMAGE to the approved, already loaded image}"
+    pull_policy: never
+
+  thanos-store:
+    image: "${THANOS_IMAGE:?set THANOS_IMAGE to the approved, already loaded image}"
+    pull_policy: never
+
+  thanos-compact:
+    image: "${THANOS_IMAGE:?set THANOS_IMAGE to the approved, already loaded image}"
+    pull_policy: never
+
+  thanos-query:
+    image: "${THANOS_IMAGE:?set THANOS_IMAGE to the approved, already loaded image}"
+    pull_policy: never
+
+  loki:
+    image: "${LOKI_IMAGE:?set LOKI_IMAGE to the approved, already loaded image}"
+    pull_policy: never
+    environment:
+      MINIO_ROOT_USER: "${MINIO_ROOT_USER:?set MINIO_ROOT_USER}"
+      MINIO_ROOT_PASSWORD: "${MINIO_ROOT_PASSWORD:?set a non-default MINIO_ROOT_PASSWORD}"
+
+  tempo:
+    image: "${TEMPO_IMAGE:?set TEMPO_IMAGE to the approved, already loaded image}"
+    pull_policy: never
+    environment:
+      MINIO_ROOT_USER: "${MINIO_ROOT_USER:?set MINIO_ROOT_USER}"
+      MINIO_ROOT_PASSWORD: "${MINIO_ROOT_PASSWORD:?set a non-default MINIO_ROOT_PASSWORD}"
+
+  grafana:
+    image: "${GRAFANA_IMAGE:?set GRAFANA_IMAGE to the approved, already loaded image}"
+    pull_policy: never
+    environment:
+      GF_SECURITY_ADMIN_USER: "${GRAFANA_ADMIN_USER:?set GRAFANA_ADMIN_USER}"
+      GF_SECURITY_ADMIN_PASSWORD: "${GRAFANA_ADMIN_PASSWORD:?set a non-default GRAFANA_ADMIN_PASSWORD}"
+
+  # Both standalone ingresses remain disabled by the combined overlay, but pin
+  # their image so accidental profile activation cannot use a floating default.
+  nginx:
+    image: "${NGINX_IMAGE:?set NGINX_IMAGE to the approved, already loaded image}"
+    pull_policy: never
+
+  management-nginx:
+    image: "${NGINX_IMAGE:?set NGINX_IMAGE to the approved, already loaded image}"
+    pull_policy: never
+
+  combined-nginx:
+    image: "${NGINX_IMAGE:?set NGINX_IMAGE to the approved, already loaded image}"
+    pull_policy: never
+
+  management-api:
+    pull_policy: never
+
+  management-mcp:
+    pull_policy: never
+
+  observability-control:
+    pull_policy: never

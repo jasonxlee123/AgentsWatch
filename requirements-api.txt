@@ -1,0 +1,13 @@
+fastapi>=0.116,<1
+uvicorn>=0.35,<1
+psycopg[binary]>=3.3,<4
+httpx>=0.28,<1
+cryptography>=45,<47
+Pillow>=11,<13
+openpyxl>=3.1,<4
+python-multipart>=0.0.9,<1
+ansible-core>=2.18,<2.20; python_version >= "3.11"
+# Ubuntu 22.04 direct-test compatibility. Production images use Python 3.12
+# and therefore always resolve the supported 2.18-2.19 branch above.
+ansible-core==2.17.14; python_version < "3.11"
+ansible-runner>=2.4,<3

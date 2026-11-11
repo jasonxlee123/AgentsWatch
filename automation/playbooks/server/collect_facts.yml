@@ -1,0 +1,27 @@
+---
+- name: Collect server facts
+  hosts: all
+  gather_facts: true
+  vars:
+    agentswatch_root_mount: >-
+      {{ (ansible_facts.mounts | default([])
+          | selectattr('mount', 'equalto', '/')
+          | list
+          | first) | default({}) }}
+  tasks:
+    - name: Return normalized server facts
+      ansible.builtin.debug:
+        var: agentswatch_result
+      vars:
+        agentswatch_result:
+          hostname: "{{ ansible_facts.hostname | default(inventory_hostname) }}"
+          fqdn: "{{ ansible_facts.fqdn | default('') }}"
+          architecture: "{{ ansible_facts.architecture | default('') }}"
+          operating_system: "{{ ansible_facts.distribution | default('') }}"
+          os_version: "{{ ansible_facts.distribution_version | default('') }}"
+          kernel: "{{ ansible_facts.kernel | default('') }}"
+          cpu_cores: "{{ ansible_facts.processor_vcpus | default(ansible_facts.processor_count | default(0)) }}"
+          memory_mib: "{{ ansible_facts.memtotal_mb | default(0) }}"
+          disk_gib: "{{ ((agentswatch_root_mount.size_total | default(0) | int) / 1073741824) | round(2) }}"
+          primary_ipv4: "{{ ansible_facts.default_ipv4.address | default('') }}"
+          python_version: "{{ ansible_facts.python_version | default('') }}"

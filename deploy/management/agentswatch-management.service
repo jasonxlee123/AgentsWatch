@@ -1,0 +1,36 @@
+[Unit]
+Description=AgentsWatch management API (local test deployment)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=agentswatch
+Group=agentswatch
+WorkingDirectory=/opt/agentswatch-management
+EnvironmentFile=/etc/agentswatch/management.env
+ExecStartPre=/usr/bin/test -d /data/agentswatch/management/run
+ExecStartPre=/usr/bin/rm -f /data/agentswatch/management/run/api.sock
+ExecStart=/opt/agentswatch-management/.venv/bin/python /opt/agentswatch-management/deploy/management/api_socket_launcher.py
+Restart=on-failure
+RestartSec=3s
+TimeoutStopSec=30s
+KillSignal=SIGTERM
+# The launcher creates a 0660 socket explicitly. The API owns the setgid run
+# directory; new sockets inherit Nginx numeric GID 101.
+UMask=0007
+
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/data/agentswatch/management
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictSUIDSGID=true
+LockPersonality=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+
+[Install]
+WantedBy=multi-user.target

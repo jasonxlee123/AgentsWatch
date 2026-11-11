@@ -1,0 +1,8 @@
+---
+- name: Start runtime
+  hosts: all
+  gather_facts: false
+  roles:
+    - role: runtime_control
+      vars:
+        runtime_action: start

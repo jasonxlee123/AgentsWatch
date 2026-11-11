@@ -1,0 +1,52 @@
+---
+- name: Discover supported runtimes
+  hosts: all
+  gather_facts: false
+  vars:
+    runtime_search_paths:
+      - /opt/openclaw
+      - /home/openclaw/.openclaw
+      - /opt/hermes
+  tasks:
+    - name: Inspect known runtime paths
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop: "{{ runtime_search_paths }}"
+      register: runtime_path_checks
+
+    - name: Locate runtime commands
+      ansible.builtin.shell:
+        cmd: "command -v {{ item }}"
+        executable: /bin/sh
+      loop:
+        - openclaw
+        - hermes
+      register: runtime_command_checks
+      changed_when: false
+      failed_when: false
+
+    - name: Build discovered path list
+      ansible.builtin.set_fact:
+        agentswatch_runtime_paths: >-
+          {{ runtime_path_checks.results
+             | selectattr('stat.exists', 'defined')
+             | selectattr('stat.exists')
+             | map(attribute='item')
+             | list }}
+
+    - name: Build discovered command list
+      ansible.builtin.set_fact:
+        agentswatch_runtime_commands: >-
+          {{ runtime_command_checks.results
+             | selectattr('rc', 'equalto', 0)
+             | map(attribute='item')
+             | list }}
+
+    - name: Return normalized runtime discovery result
+      ansible.builtin.debug:
+        var: agentswatch_result
+      vars:
+        agentswatch_result:
+          paths: "{{ agentswatch_runtime_paths }}"
+          commands: "{{ agentswatch_runtime_commands }}"
+          detected: "{{ (agentswatch_runtime_paths + agentswatch_runtime_commands) | unique | list }}"

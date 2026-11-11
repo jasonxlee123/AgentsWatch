@@ -1,0 +1,15 @@
+---
+- name: Check server connection
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Verify Ansible connection
+      ansible.builtin.ping:
+
+    - name: Return normalized connection result
+      ansible.builtin.debug:
+        var: agentswatch_result
+      vars:
+        agentswatch_result:
+          connected: true
+          transport: "{{ ansible_connection | default('ssh') }}"

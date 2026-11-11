@@ -1,0 +1,520 @@
+---
+- name: Apply OpenClaw agent deployment
+  hosts: all
+  gather_facts: false
+  environment:
+    OPENCLAW_CONFIG_PATH: "{{ runtime_config_path }}"
+    OPENCLAW_STATE_DIR: "{{ runtime_state_path }}"
+  vars:
+    agentswatch_feishu_definitions: "{{ agentswatch_agent_definitions | selectattr('channel_type', 'equalto', 'feishu') | list }}"
+    agentswatch_unbound_definitions: "{{ (agentswatch_agent_definitions | selectattr('channel_type', 'equalto', 'none') | list) + (agentswatch_retired_agent_definitions | default([])) }}"
+    agentswatch_primary_definition: "{{ agentswatch_agent_definitions | selectattr('structure_role', 'equalto', 'primary') | list | first }}"
+    agentswatch_ownership_directory: "{{ runtime_state_path }}/.agentswatch"
+    agentswatch_ownership_file: "{{ agentswatch_ownership_directory }}/agent-ownership.json"
+  tasks:
+    - name: Validate controlled agent deployment inputs
+      ansible.builtin.assert:
+        that:
+          - runtime_family_code == "openclaw"
+          - runtime_config_path | length > 0
+          - runtime_state_path | length > 0
+          - runtime_management_driver in ['systemd', 'systemd_user', 'launchd', 'mock']
+          - runtime_management_target | length > 0
+          - agentswatch_agent_definitions | length > 0
+          - agentswatch_agent_definitions | selectattr('structure_role', 'equalto', 'primary') | list | length == 1
+          - agentswatch_feishu_definitions | length == 0 or agentswatch_channel_patch_file is defined
+        fail_msg: "agent deployment requires a managed OpenClaw runtime and an encrypted channel patch when Feishu is enabled"
+
+    - name: Inspect AgentsWatch runtime ownership registry
+      ansible.builtin.stat:
+        path: "{{ agentswatch_ownership_file }}"
+      register: agentswatch_ownership_before
+
+    - name: Snapshot AgentsWatch runtime ownership registry in memory
+      ansible.builtin.slurp:
+        path: "{{ agentswatch_ownership_file }}"
+      register: agentswatch_ownership_snapshot
+      when: agentswatch_ownership_before.stat.exists
+      no_log: true
+
+    - name: Normalize AgentsWatch runtime ownership registry
+      ansible.builtin.set_fact:
+        agentswatch_ownership_registry_before: >-
+          {{ (agentswatch_ownership_snapshot.content | b64decode | from_json) if agentswatch_ownership_before.stat.exists else {} }}
+      no_log: true
+
+    - name: Read configured OpenClaw agents before adoption
+      ansible.builtin.command:
+        argv: ["openclaw", "agents", "list", "--json"]
+      register: agents_before
+      changed_when: false
+
+    - name: Extract existing OpenClaw agent ids
+      ansible.builtin.set_fact:
+        existing_agent_ids: "{{ (agents_before.stdout | from_json) | map(attribute='id') | list }}"
+
+    - name: Index existing OpenClaw agents for collision checks
+      ansible.builtin.set_fact:
+        agentswatch_agents_before_by_id: >-
+          {{ (agentswatch_agents_before_by_id | default({})) | combine({item.id: item}) }}
+      loop: "{{ agents_before.stdout | from_json }}"
+      loop_control:
+        label: "{{ item.id }}"
+
+    - name: Require explicitly confirmed imported agent keys to exist
+      ansible.builtin.assert:
+        that:
+          - (agentswatch_require_existing_agent_keys | default([]) | difference(existing_agent_ids)) | length == 0
+        fail_msg: "one or more confirmed imported runtime agent keys do not exist; discovery and explicit mapping are required"
+      when: agentswatch_require_existing_agent_keys | default([]) | length > 0
+
+    - name: Require compensating restore keys to remain owned by this primary agent
+      ansible.builtin.assert:
+        that:
+          - (agentswatch_require_owned_agent_keys | default([]) | difference(existing_agent_ids)) | length == 0
+          - >-
+            agentswatch_require_owned_agent_keys | default([]) | difference(
+              agentswatch_ownership_registry_before | dict2items
+              | selectattr('value.primary_agent_id', 'defined')
+              | selectattr('value.primary_agent_id', 'equalto', agentswatch_primary_definition.agent_id)
+              | map(attribute='key') | list
+            ) | length == 0
+        fail_msg: >-
+          compensating restore ownership is missing or belongs to another primary agent;
+          explicit sync/adoption is required before remote mutation
+      when: agentswatch_require_owned_agent_keys | default([]) | length > 0
+
+    - name: Require retired cleanup keys to remain owned by this primary agent
+      ansible.builtin.assert:
+        that:
+          - >-
+            agentswatch_retired_agent_definitions | default([])
+            | map(attribute='runtime_agent_key') | list
+            | difference(
+              agentswatch_ownership_registry_before | dict2items
+              | selectattr('value.primary_agent_id', 'defined')
+              | selectattr('value.primary_agent_id', 'equalto', agentswatch_primary_definition.agent_id)
+              | map(attribute='key') | list
+            ) | length == 0
+        fail_msg: >-
+          retired agent cleanup ownership is missing or belongs to another primary agent;
+          explicit sync/adoption is required before remote cleanup
+      when: agentswatch_retired_agent_definitions | default([]) | length > 0
+
+    - name: Resolve effective workspace reservations
+      ansible.builtin.set_fact:
+        agentswatch_effective_workspaces: >-
+          {{
+            (agentswatch_effective_workspaces | default({})) | combine({
+              item.runtime_agent_key: (
+                agentswatch_ownership_registry_before.get(item.runtime_agent_key, {}).get('workspace')
+                if agentswatch_ownership_registry_before.get(item.runtime_agent_key, {}).get('primary_agent_id') == agentswatch_primary_definition.agent_id
+                and agentswatch_ownership_registry_before.get(item.runtime_agent_key, {}).get('workspace')
+                else agentswatch_agents_before_by_id.get(item.runtime_agent_key, {}).get('workspace')
+                if item.runtime_agent_key in existing_agent_ids
+                else item.workspace_path
+              )
+            })
+          }}
+      loop: "{{ agentswatch_agent_definitions }}"
+      loop_control:
+        label: "{{ item.runtime_agent_key }}"
+      no_log: true
+
+    - name: Validate effective workspace reservations
+      ansible.builtin.assert:
+        that:
+          - agentswatch_effective_workspaces.get(item.runtime_agent_key, '') is match('^/')
+        fail_msg: "every managed OpenClaw key requires an absolute reserved workspace"
+      loop: "{{ agentswatch_agent_definitions }}"
+      loop_control:
+        label: "{{ item.runtime_agent_key }}"
+
+    - name: Reject unexpected existing agent key and workspace collisions
+      ansible.builtin.assert:
+        that:
+          - >-
+            not agentswatch_ownership_registry_before.get(item.runtime_agent_key)
+            or (
+              agentswatch_ownership_registry_before.get(item.runtime_agent_key, {}).get('primary_agent_id') == agentswatch_primary_definition.agent_id
+              and (
+                item.runtime_agent_key not in existing_agent_ids
+                or agentswatch_agents_before_by_id.get(item.runtime_agent_key, {}).get('workspace', '') == agentswatch_ownership_registry_before.get(item.runtime_agent_key, {}).get('workspace')
+              )
+            )
+          - >-
+            item.runtime_agent_key not in existing_agent_ids
+            or item.runtime_agent_key in (agentswatch_require_existing_agent_keys | default([]))
+            or item.runtime_agent_key in (agentswatch_allow_existing_agent_keys | default([]))
+            or agentswatch_ownership_registry_before.get(item.runtime_agent_key, {}).get('primary_agent_id') == agentswatch_primary_definition.agent_id
+        fail_msg: "an OpenClaw agent key already exists with a different workspace; migration or deployment cannot take ownership of it"
+      loop: "{{ agentswatch_agent_definitions }}"
+      loop_control:
+        label: "{{ item.runtime_agent_key }}"
+
+    - name: Inspect original OpenClaw configuration
+      ansible.builtin.stat:
+        path: "{{ runtime_config_path }}"
+      register: agentswatch_config_before
+      no_log: true
+
+    - name: Snapshot original OpenClaw configuration in memory
+      ansible.builtin.slurp:
+        path: "{{ runtime_config_path }}"
+      register: agentswatch_config_snapshot
+      when: agentswatch_config_before.stat.exists
+      no_log: true
+
+    - name: Apply deployment transaction
+      block:
+        - name: Create AgentsWatch runtime ownership directory
+          ansible.builtin.file:
+            path: "{{ agentswatch_ownership_directory }}"
+            state: directory
+            mode: "0700"
+
+        - name: Build requested AgentsWatch ownership registry
+          ansible.builtin.set_fact:
+            agentswatch_ownership_registry_requested: >-
+              {{ (agentswatch_ownership_registry_requested | default(agentswatch_ownership_registry_before)) | combine({item.runtime_agent_key: {'primary_agent_id': agentswatch_primary_definition.agent_id, 'workspace': agentswatch_effective_workspaces[item.runtime_agent_key]}}) }}
+          loop: "{{ agentswatch_agent_definitions }}"
+          loop_control:
+            label: "{{ item.runtime_agent_key }}"
+          no_log: true
+
+        - name: Persist requested AgentsWatch ownership before runtime mutation
+          ansible.builtin.copy:
+            content: "{{ agentswatch_ownership_registry_requested | to_nice_json }}\n"
+            dest: "{{ agentswatch_ownership_file }}"
+            mode: "0600"
+          no_log: true
+
+        - name: Create missing OpenClaw agents
+          ansible.builtin.command:
+            argv: "{{ ['openclaw', 'agents', 'add', item.runtime_agent_key, '--non-interactive', '--workspace', agentswatch_effective_workspaces[item.runtime_agent_key], '--json'] + ((item.model | default('') | length > 0) | ternary(['--model', item.model], [])) }}"
+          loop: "{{ agentswatch_agent_definitions }}"
+          loop_control:
+            label: "{{ item.runtime_agent_key }}"
+          when: item.runtime_agent_key not in existing_agent_ids
+          register: agent_add_results
+
+        - name: Apply display identities
+          ansible.builtin.command:
+            argv:
+              - openclaw
+              - agents
+              - set-identity
+              - --agent
+              - "{{ item.runtime_agent_key }}"
+              - --name
+              - "{{ item.name }}"
+              - --json
+          loop: "{{ agentswatch_agent_definitions }}"
+          loop_control:
+            label: "{{ item.runtime_agent_key }}"
+          changed_when: false
+
+        - name: Read installed OpenClaw plugins
+          ansible.builtin.command:
+            argv: ["openclaw", "plugins", "list", "--json"]
+          register: openclaw_plugins_before
+          changed_when: false
+          when: agentswatch_feishu_definitions | length > 0 or agentswatch_unbound_definitions | length > 0
+
+        - name: Extract installed plugin ids
+          ansible.builtin.set_fact:
+            openclaw_plugin_ids: "{{ ((openclaw_plugins_before.stdout | from_json).plugins | default([])) | map(attribute='id') | list }}"
+          when: openclaw_plugins_before is not skipped
+
+        - name: Read OpenClaw version for matching official Feishu plugin
+          ansible.builtin.command:
+            argv: ["openclaw", "--version"]
+          register: openclaw_version
+          changed_when: false
+          when:
+            - agentswatch_feishu_definitions | length > 0
+            - "'feishu' not in (openclaw_plugin_ids | default([]))"
+
+        - name: Install matching official Feishu plugin
+          ansible.builtin.command:
+            argv:
+              - openclaw
+              - plugins
+              - install
+              - "@openclaw/feishu@{{ openclaw_version.stdout | regex_search('[0-9]{4}\\.[0-9]+\\.[0-9]+') }}"
+          register: feishu_plugin_install
+          when:
+            - agentswatch_feishu_definitions | length > 0
+            - "'feishu' not in (openclaw_plugin_ids | default([]))"
+
+        - name: Apply encrypted Feishu account patch
+          when: agentswatch_feishu_definitions | length > 0
+          block:
+            - name: Allocate remote credential patch file
+              ansible.builtin.tempfile:
+                state: file
+                suffix: .agentswatch-feishu.json
+              register: remote_channel_patch
+
+            - name: Transfer credential patch with restrictive permissions
+              ansible.builtin.copy:
+                src: "{{ agentswatch_channel_patch_file }}"
+                dest: "{{ remote_channel_patch.path }}"
+                mode: "0600"
+              no_log: true
+
+            - name: Merge Feishu accounts into OpenClaw configuration
+              ansible.builtin.command:
+                argv: ["openclaw", "config", "patch", "--file", "{{ remote_channel_patch.path }}"]
+              no_log: true
+          always:
+            - name: Remove remote credential patch file
+              ansible.builtin.file:
+                path: "{{ remote_channel_patch.path | default('') }}"
+                state: absent
+              when: remote_channel_patch.path | default('') | length > 0
+              no_log: true
+
+        - name: Bind configured Feishu accounts to agents
+          ansible.builtin.command:
+            argv:
+              - openclaw
+              - agents
+              - bind
+              - --agent
+              - "{{ item.runtime_agent_key }}"
+              - --bind
+              - "feishu:{{ item.channel_account_id }}"
+              - --json
+          loop: "{{ agentswatch_feishu_definitions }}"
+          loop_control:
+            label: "{{ item.runtime_agent_key }}"
+          register: feishu_bind_results
+          changed_when: >-
+            ((feishu_bind_results.stdout | from_json).added | default([]) | length > 0)
+            or ((feishu_bind_results.stdout | from_json).updated | default([]) | length > 0)
+
+        - name: Remove obsolete Feishu bindings
+          ansible.builtin.command:
+            argv:
+              - openclaw
+              - agents
+              - unbind
+              - --agent
+              - "{{ item.runtime_agent_key }}"
+              - --bind
+              - "feishu:{{ item.channel_account_id }}"
+              - --json
+          loop: "{{ agentswatch_unbound_definitions }}"
+          loop_control:
+            label: "{{ item.runtime_agent_key }}"
+          register: feishu_unbind_results
+          failed_when: false
+          changed_when: >-
+            feishu_unbind_results.rc == 0
+            and ((feishu_unbind_results.stdout | from_json).removed | default([]) | length > 0)
+
+        - name: Delete obsolete platform-managed Feishu accounts
+          ansible.builtin.command:
+            argv:
+              - openclaw
+              - channels
+              - remove
+              - --channel
+              - feishu
+              - --account
+              - "{{ item.channel_account_id }}"
+              - --delete
+          loop: "{{ agentswatch_unbound_definitions }}"
+          loop_control:
+            label: "{{ item.channel_account_id }}"
+          register: feishu_remove_results
+          failed_when: false
+          changed_when: feishu_remove_results.rc == 0
+          when: "'feishu' in (openclaw_plugin_ids | default([])) or feishu_plugin_install is not skipped"
+          no_log: true
+
+        - name: Validate resulting OpenClaw configuration
+          ansible.builtin.command:
+            argv: ["openclaw", "config", "validate", "--json"]
+          changed_when: false
+
+        - name: Decide whether the shared runtime requires restart
+          ansible.builtin.set_fact:
+            agentswatch_runtime_restart_required: >-
+              {{
+                (agent_add_results.results | default([]) | rejectattr('skipped', 'defined') | list | length > 0)
+                or (agentswatch_feishu_definitions | length > 0)
+                or (feishu_unbind_results is changed)
+                or (feishu_remove_results is changed)
+              }}
+
+        - name: Restart shared runtime after configuration changes
+          ansible.builtin.include_role:
+            name: runtime_control
+          vars:
+            runtime_action: restart
+          when: agentswatch_runtime_restart_required | bool
+
+        - name: Read final OpenClaw agents
+          ansible.builtin.command:
+            argv: ["openclaw", "agents", "list", "--json"]
+          register: agents_after
+          changed_when: false
+
+        - name: Read final OpenClaw agent bindings
+          ansible.builtin.command:
+            argv: ["openclaw", "agents", "bindings", "--json"]
+          register: bindings_after
+          changed_when: false
+
+        - name: Read final Feishu account configuration
+          ansible.builtin.command:
+            argv: ["openclaw", "config", "get", "channels.feishu.accounts", "--json"]
+          register: accounts_after
+          changed_when: false
+          failed_when: false
+          no_log: true
+
+        - name: Index final OpenClaw agents and channel state
+          ansible.builtin.set_fact:
+            agentswatch_agents_after_by_id: >-
+              {{ (agentswatch_agents_after_by_id | default({})) | combine({item.id: item}) }}
+          loop: "{{ agents_after.stdout | from_json }}"
+          loop_control:
+            label: "{{ item.id }}"
+
+        - name: Normalize final Feishu accounts
+          ansible.builtin.set_fact:
+            agentswatch_final_feishu_accounts: >-
+              {{ ((accounts_after.stdout | from_json) | default({}, true)) if accounts_after.rc == 0 and accounts_after.stdout | trim | length > 0 else {} }}
+            agentswatch_final_binding_pairs: []
+          no_log: true
+
+        - name: Index final Feishu bindings
+          ansible.builtin.set_fact:
+            agentswatch_final_binding_pairs: >-
+              {{ agentswatch_final_binding_pairs + [item.agentId ~ ':' ~ item.match.channel ~ ':' ~ item.match.accountId] }}
+          loop: "{{ bindings_after.stdout | from_json }}"
+          loop_control:
+            label: "{{ item.agentId | default('unknown') }}"
+          when:
+            - item.agentId is defined
+            - item.match is defined
+            - item.match.channel is defined
+            - item.match.accountId is defined
+
+        - name: Verify desired OpenClaw agent workspaces
+          ansible.builtin.assert:
+            that:
+              - item.runtime_agent_key in agentswatch_agents_after_by_id
+              - agentswatch_agents_after_by_id.get(item.runtime_agent_key, {}).get('workspace', '') is match('^/')
+              - >-
+                item.runtime_agent_key in existing_agent_ids
+                or agentswatch_agents_after_by_id.get(item.runtime_agent_key, {}).get('workspace', '') == agentswatch_effective_workspaces[item.runtime_agent_key]
+            fail_msg: "OpenClaw did not preserve a valid absolute workspace for a deployed agent"
+          loop: "{{ agentswatch_agent_definitions }}"
+          loop_control:
+            label: "{{ item.runtime_agent_key }}"
+
+        - name: Build normalized deployed agent workspace map
+          ansible.builtin.set_fact:
+            agentswatch_deployed_agent_workspaces: >-
+              {{ (agentswatch_deployed_agent_workspaces | default({})) | combine({item.runtime_agent_key: agentswatch_agents_after_by_id[item.runtime_agent_key].workspace}) }}
+          loop: "{{ agentswatch_agent_definitions }}"
+          loop_control:
+            label: "{{ item.runtime_agent_key }}"
+
+        - name: Build observed AgentsWatch ownership registry
+          ansible.builtin.set_fact:
+            agentswatch_ownership_registry_final: >-
+              {{ (agentswatch_ownership_registry_final | default(agentswatch_ownership_registry_before)) | combine({item.runtime_agent_key: {'primary_agent_id': agentswatch_primary_definition.agent_id, 'workspace': agentswatch_agents_after_by_id[item.runtime_agent_key].workspace}}) }}
+          loop: "{{ agentswatch_agent_definitions }}"
+          loop_control:
+            label: "{{ item.runtime_agent_key }}"
+          no_log: true
+
+        - name: Persist observed AgentsWatch ownership registry
+          ansible.builtin.copy:
+            content: "{{ agentswatch_ownership_registry_final | to_nice_json }}\n"
+            dest: "{{ agentswatch_ownership_file }}"
+            mode: "0600"
+          no_log: true
+
+        - name: Verify desired Feishu accounts and bindings
+          ansible.builtin.assert:
+            that:
+              - item.channel_account_id in agentswatch_final_feishu_accounts
+              - >-
+                (agentswatch_final_feishu_accounts.get(item.channel_account_id, {}).get('enabled', false) | bool)
+                == (agentswatch_expected_channel_enabled | default(true) | bool)
+              - >-
+                (item.runtime_agent_key ~ ':feishu:' ~ item.channel_account_id)
+                in agentswatch_final_binding_pairs
+            fail_msg: "a managed Feishu account or binding was not applied with the expected enabled state"
+          loop: "{{ agentswatch_feishu_definitions }}"
+          loop_control:
+            label: "{{ item.channel_account_id }}"
+          no_log: true
+
+        - name: Verify obsolete Feishu accounts and bindings are absent
+          ansible.builtin.assert:
+            that:
+              - item.channel_account_id not in agentswatch_final_feishu_accounts
+              - >-
+                (item.runtime_agent_key ~ ':feishu:' ~ item.channel_account_id)
+                not in agentswatch_final_binding_pairs
+            fail_msg: "an obsolete managed Feishu account or binding remains configured"
+          loop: "{{ agentswatch_unbound_definitions }}"
+          loop_control:
+            label: "{{ item.channel_account_id }}"
+          no_log: true
+
+        - name: Publish normalized deployment result
+          ansible.builtin.debug:
+            var: agentswatch_result
+          vars:
+            agentswatch_result:
+              runtime_family_code: "{{ runtime_family_code }}"
+              deployed_agent_keys: "{{ agentswatch_agent_definitions | map(attribute='runtime_agent_key') | list }}"
+              agent_workspaces: "{{ agentswatch_deployed_agent_workspaces }}"
+              retired_agent_keys: "{{ agentswatch_retired_agent_definitions | default([]) | map(attribute='runtime_agent_key') | list }}"
+              configured_channel_account_ids: "{{ agentswatch_feishu_definitions | map(attribute='channel_account_id') | list }}"
+              configured_agent_count: "{{ agents_after.stdout | from_json | length }}"
+              configured_binding_count: "{{ bindings_after.stdout | from_json | length }}"
+              created_agent_count: "{{ agent_add_results.results | default([]) | rejectattr('skipped', 'defined') | list | length }}"
+              runtime_restarted: "{{ agentswatch_runtime_restart_required | bool }}"
+      rescue:
+        - name: Restore original OpenClaw configuration
+          ansible.builtin.copy:
+            content: "{{ agentswatch_config_snapshot.content | b64decode }}"
+            dest: "{{ runtime_config_path }}"
+            mode: "{{ agentswatch_config_before.stat.mode | default('0600') }}"
+          when: agentswatch_config_before.stat.exists
+          no_log: true
+
+        - name: Remove configuration created by the failed deployment
+          ansible.builtin.file:
+            path: "{{ runtime_config_path }}"
+            state: absent
+          when: not agentswatch_config_before.stat.exists
+          no_log: true
+
+        - name: Validate restored OpenClaw configuration
+          ansible.builtin.command:
+            argv: ["openclaw", "config", "validate", "--json"]
+          changed_when: false
+          when: agentswatch_config_before.stat.exists
+
+        - name: Restart runtime after restoring configuration
+          ansible.builtin.include_role:
+            name: runtime_control
+          vars:
+            runtime_action: restart
+          when: agentswatch_config_before.stat.exists
+
+        - name: Report deployment rollback
+          ansible.builtin.fail:
+            msg: >-
+              agent deployment failed; the original OpenClaw configuration was restored
+              and ownership reservations were retained for any residual identity/workspace

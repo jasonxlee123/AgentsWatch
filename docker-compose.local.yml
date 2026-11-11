@@ -1,0 +1,45 @@
+name: agentswatch-local
+
+services:
+  core-db-local:
+    image: postgres:16-alpine
+    platform: ${POSTGRES_PLATFORM:-linux/amd64}
+    environment:
+      POSTGRES_DB: agentswatch_local
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: "${AGENTSWATCH_LOCAL_POSTGRES_PASSWORD:?start through scripts/local_management_stack.sh}"
+    ports:
+      - "127.0.0.1:${AGENTSWATCH_LOCAL_DB_PORT:-55432}:5432"
+    volumes:
+      - agentswatch_core_db_local:/var/lib/postgresql/data
+      - ./database/core-assets/001_core_asset_schema.sql:/docker-entrypoint-initdb.d/001_core_asset_schema.sql:ro
+      - ./database/core-assets/002_server_management.sql:/docker-entrypoint-initdb.d/002_server_management.sql:ro
+      - ./database/core-assets/004_runtime_management.sql:/docker-entrypoint-initdb.d/004_runtime_management.sql:ro
+      - ./database/core-assets/005_runtime_web_access.sql:/docker-entrypoint-initdb.d/005_runtime_web_access.sql:ro
+      - ./database/core-assets/006_agent_channels.sql:/docker-entrypoint-initdb.d/006_agent_channels.sql:ro
+      - ./database/core-assets/007_subagent_channels.sql:/docker-entrypoint-initdb.d/007_subagent_channels.sql:ro
+      - ./database/core-assets/008_agent_operations.sql:/docker-entrypoint-initdb.d/008_agent_operations.sql:ro
+      - ./database/core-assets/009_automation_library_and_tasks.sql:/docker-entrypoint-initdb.d/009_automation_library_and_tasks.sql:ro
+      - ./database/core-assets/010_operation_events.sql:/docker-entrypoint-initdb.d/010_operation_events.sql:ro
+      - ./database/core-assets/011_allow_shared_public_ip.sql:/docker-entrypoint-initdb.d/011_allow_shared_public_ip.sql:ro
+      - ./database/core-assets/012_systemd_user_runtime_management.sql:/docker-entrypoint-initdb.d/012_systemd_user_runtime_management.sql:ro
+      - ./database/core-assets/013_user_authentication.sql:/docker-entrypoint-initdb.d/013_user_authentication.sql:ro
+      - ./database/core-assets/014_organization_master_guards.sql:/docker-entrypoint-initdb.d/014_organization_master_guards.sql:ro
+      - ./database/core-assets/015_runtime_primary_agent_one_to_one.sql:/docker-entrypoint-initdb.d/015_runtime_primary_agent_one_to_one.sql:ro
+      - ./database/core-assets/016_runtime_management_groups.sql:/docker-entrypoint-initdb.d/016_runtime_management_groups.sql:ro
+      - ./database/core-assets/017_server_password_bootstrap.sql:/docker-entrypoint-initdb.d/017_server_password_bootstrap.sql:ro
+      - ./database/core-assets/018_api_keys.sql:/docker-entrypoint-initdb.d/018_api_keys.sql:ro
+      - ./database/core-assets/019_operation_confirmations.sql:/docker-entrypoint-initdb.d/019_operation_confirmations.sql:ro
+      - ./database/core-assets/020_observability_gateway_v2.sql:/docker-entrypoint-initdb.d/020_observability_gateway_v2.sql:ro
+      - ./database/core-assets/021_agent_deployment_primary_role_integrity.sql:/docker-entrypoint-initdb.d/021_agent_deployment_primary_role_integrity.sql:ro
+      - ./tests/sql/core_asset_schema_test.sql:/docker-entrypoint-initdb.d/900_local_demo_seed.sql:ro
+      - ./database/core-assets/003_local_reader.sql:/docker-entrypoint-initdb.d/999_local_roles.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d agentswatch_local"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+    restart: unless-stopped
+
+volumes:
+  agentswatch_core_db_local:

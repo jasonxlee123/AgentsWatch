@@ -1,0 +1,35 @@
+{
+  "runtime_id": "00000000-0000-4000-8000-000000000702",
+  "runtime_family_code": "hermes",
+  "discovered_at": "2026-07-12T08:05:00+08:00",
+  "discovery_status": "succeeded",
+  "actual_version": "1.0.3",
+  "extensions": [
+    {"name": "hermes-tools", "version": "1.0.0"}
+  ],
+  "config": {
+    "deployment": "container",
+    "container_name": "hermes-main",
+    "password": "fixture-password-must-not-survive"
+  },
+  "agents": [
+    {
+      "key": "contract-main",
+      "name": "合同风险智能体",
+      "role": "primary",
+      "parent_key": null,
+      "model": "hermes-3",
+      "skills": ["contract-review"],
+      "tools": ["document-reader"]
+    },
+    {
+      "key": "contract-clause",
+      "name": "合同条款子智能体",
+      "role": "subagent",
+      "parent_key": "contract-main",
+      "model": "hermes-3-small",
+      "skills": ["clause-analysis"],
+      "tools": ["document-reader"]
+    }
+  ]
+}

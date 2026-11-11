@@ -1,0 +1,90 @@
+{
+  "defaults": {
+    "cluster": "example-cluster",
+    "env": "example",
+    "region": "example-region",
+    "team": "example-team",
+    "scheme": "http",
+    "port": 16402,
+    "metrics_path": "/api/diagnostics/prometheus",
+    "otel_endpoint": "http://192.0.2.10:4318",
+    "sample_rate": 1.0,
+    "flush_interval_ms": 60000,
+    "stuck_session_warn_ms": 120000,
+    "stuck_session_abort_ms": 360000
+  },
+  "gateways": [
+    {
+      "gateway_id": "example-gateway-001",
+      "host": "192.0.2.11",
+      "enabled": true,
+      "deployment_mode": "baremetal",
+      "service_mode": "单一",
+      "lobster_name": "示例智能体一号",
+      "department": "示例部门甲",
+      "metadata": {
+        "server_id": "example-server-001",
+        "agent_type": "OpenClaw",
+        "openclaw_version": "2026.0.0",
+        "target_user": "example-user-001",
+        "it_owner": "示例运维一号",
+        "business_owner": "示例业务一号",
+        "mounted_agents": 1,
+        "network_requirements": [
+          {"name": "示例服务", "target": "service.example.invalid", "port": "443"},
+          {"name": "示例目录", "target": "directory.example.invalid", "port": "443"}
+        ]
+      }
+    },
+    {
+      "gateway_id": "example-gateway-002",
+      "host": "198.51.100.12",
+      "enabled": true,
+      "deployment_mode": "container",
+      "container_name": "example-runtime",
+      "service_mode": "集群",
+      "lobster_name": "示例智能体二号",
+      "department": "示例部门乙",
+      "region": "example-region-b",
+      "team": "example-team-b",
+      "metadata": {
+        "server_id": "example-server-002",
+        "agent_type": "OpenClaw",
+        "openclaw_version": "2026.0.1",
+        "target_user": "example-user-002",
+        "it_owner": "示例运维二号",
+        "business_owner": "示例业务二号",
+        "mounted_agents": 2,
+        "network_requirements": [
+          {"name": "示例服务", "target": "service.example.invalid", "port": "443"},
+          {"name": "示例日志", "target": "logs.example.invalid", "port": "8443"}
+        ]
+      }
+    },
+    {
+      "gateway_id": "example-gateway-003",
+      "host": "203.0.113.13",
+      "enabled": false,
+      "deployment_mode": "baremetal",
+      "service_mode": "单一",
+      "lobster_name": "示例智能体三号",
+      "department": "示例部门丙",
+      "env": "example",
+      "region": "example-region-c",
+      "team": "example-team-c",
+      "metadata": {
+        "server_id": "example-server-003",
+        "agent_type": "OpenClaw",
+        "openclaw_version": "2026.0.2",
+        "target_user": "example-user-003",
+        "it_owner": "示例运维三号",
+        "business_owner": "示例业务三号",
+        "mounted_agents": 4,
+        "network_requirements": [
+          {"name": "示例服务", "target": "service.example.invalid", "port": "443"},
+          {"name": "示例监控", "target": "metrics.example.invalid", "port": "9090"}
+        ]
+      }
+    }
+  ]
+}

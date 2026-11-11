@@ -1,0 +1,4 @@
+# 1.23.2 fixes stateless Streamable HTTP transport cleanup.
+mcp>=1.23.2,<2
+httpx>=0.28,<1
+uvicorn>=0.35,<1

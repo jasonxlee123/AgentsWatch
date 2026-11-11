@@ -1,0 +1,39 @@
+# Optional compatibility overlay for a loopback-only OpenClaw instance running
+# on the same host as AgentsWatch. Keep this file out of deployments that do not
+# need the historical /openclaw/ route.
+
+services:
+  legacy-openclaw-relay:
+    image: "${AGENTSWATCH_MANAGEMENT_IMAGE:?set AGENTSWATCH_MANAGEMENT_IMAGE}"
+    pull_policy: never
+    restart: unless-stopped
+    user: "10001:10001"
+    read_only: true
+    network_mode: host
+    entrypoint: ["tini", "--"]
+    command: ["python", "/usr/local/bin/agentswatch-openclaw-loopback-relay"]
+    environment:
+      AGENTSWATCH_OPENCLAW_RELAY_SOCKET: /data/agentswatch/management/run/openclaw.sock
+      AGENTSWATCH_OPENCLAW_RELAY_HOST: 127.0.0.1
+      AGENTSWATCH_OPENCLAW_RELAY_PORT: "${AGENTSWATCH_LEGACY_OPENCLAW_PORT:-16402}"
+    volumes:
+      - management-run:/data/agentswatch/management/run
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=16m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 64
+    stop_grace_period: 15s
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os,socket; t=socket.create_connection(('127.0.0.1',int(os.environ['AGENTSWATCH_OPENCLAW_RELAY_PORT'])),2); t.close(); u=socket.socket(socket.AF_UNIX); u.settimeout(2); u.connect('/data/agentswatch/management/run/openclaw.sock'); u.close()"]
+      interval: 15s
+      timeout: 3s
+      start_period: 5s
+      retries: 4
+
+  combined-nginx:
+    volumes:
+      - ./deploy/combined/nginx-legacy-openclaw.conf:/etc/nginx/optional/legacy-openclaw.conf:ro,z
+      - "${AGENTSWATCH_LEGACY_OPENCLAW_HTPASSWD_FILE:?set AGENTSWATCH_LEGACY_OPENCLAW_HTPASSWD_FILE}:/etc/nginx/auth/agentswatch.htpasswd:ro,z"

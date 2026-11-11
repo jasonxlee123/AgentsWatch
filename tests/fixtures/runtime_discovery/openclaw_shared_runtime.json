@@ -1,0 +1,49 @@
+{
+  "runtime_id": "00000000-0000-4000-8000-000000000701",
+  "runtime_family_code": "openclaw",
+  "discovered_at": "2026-07-12T08:00:00+08:00",
+  "discovery_status": "succeeded",
+  "actual_version": "2026.6.11",
+  "extensions": [
+    {"name": "diagnostics-otel", "version": "1.4.0"},
+    {"name": "diagnostics-prometheus", "version": "1.2.0"}
+  ],
+  "config": {
+    "gateway": {
+      "bind": "lan",
+      "port": 16402,
+      "auth": {"token": "local-fixture-token-must-not-survive"}
+    },
+    "provider_api_key": "fixture-redaction-sentinel",
+    "mode": "multi_agent"
+  },
+  "agents": [
+    {
+      "key": "personal-main",
+      "name": "员工个人数字助手",
+      "role": "primary",
+      "parent_key": null,
+      "model": "gpt-5",
+      "skills": ["employee-search"],
+      "tools": ["directory", "knowledge-search"]
+    },
+    {
+      "key": "personal-research",
+      "name": "个人信息检索子智能体",
+      "role": "subagent",
+      "parent_key": "personal-main",
+      "model": "gpt-5-mini",
+      "skills": ["research"],
+      "tools": ["knowledge-search"]
+    },
+    {
+      "key": "finance-main",
+      "name": "财务部综合助手",
+      "role": "primary",
+      "parent_key": null,
+      "model": "gpt-5",
+      "skills": ["finance"],
+      "tools": ["ledger-query"]
+    }
+  ]
+}

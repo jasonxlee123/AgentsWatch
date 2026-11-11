@@ -1,0 +1,19 @@
+# Add this as the final override for a combined deployment that uses the
+# single-host production PostgreSQL project. The database network is created
+# and owned by compose.production.yml in the independent database project.
+
+services:
+  management-api:
+    networks:
+      - management-backend
+      - agentswatch-database
+
+  observability-control:
+    networks:
+      - default
+      - agentswatch-database
+
+networks:
+  agentswatch-database:
+    external: true
+    name: agentswatch-database

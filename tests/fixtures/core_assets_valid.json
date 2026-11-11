@@ -1,0 +1,615 @@
+{
+  "environments": [
+    {
+      "environment_id": "00000000-0000-4000-8000-000000000001",
+      "environment_code": "prod-cn",
+      "name": "中国区生产环境",
+      "stage": "prod",
+      "region": "cn-beijing",
+      "operations_team": "platform-ops",
+      "lifecycle_status": "active",
+      "row_version": 1
+    }
+  ],
+  "cloud_providers": [
+    {
+      "cloud_provider_id": "00000000-0000-4000-8000-000000000101",
+      "provider_code": "huawei_cloud",
+      "name": "华为云",
+      "provider_kind": "public_cloud",
+      "status": "active",
+      "row_version": 1
+    },
+    {
+      "cloud_provider_id": "00000000-0000-4000-8000-000000000102",
+      "provider_code": "private_cloud",
+      "name": "企业私有云",
+      "provider_kind": "private_cloud",
+      "status": "active",
+      "row_version": 1
+    }
+  ],
+  "departments": [
+    {
+      "department_id": "00000000-0000-4000-8000-000000000201",
+      "department_code": "DEP-PLATFORM",
+      "name": "平台运维部",
+      "parent_department_id": null,
+      "is_active": true,
+      "row_version": 1
+    },
+    {
+      "department_id": "00000000-0000-4000-8000-000000000202",
+      "department_code": "DEP-FINANCE",
+      "name": "示例财务部",
+      "parent_department_id": null,
+      "is_active": true,
+      "row_version": 1
+    },
+    {
+      "department_id": "00000000-0000-4000-8000-000000000203",
+      "department_code": "DEP-LEGAL",
+      "name": "示例法务部",
+      "parent_department_id": null,
+      "is_active": true,
+      "row_version": 1
+    }
+  ],
+  "people": [
+    {
+      "person_id": "00000000-0000-4000-8000-000000000301",
+      "employee_no": "000001",
+      "display_name": "平台运维负责人",
+      "primary_department_id": "00000000-0000-4000-8000-000000000201",
+      "employment_status": "active",
+      "row_version": 1
+    },
+    {
+      "person_id": "00000000-0000-4000-8000-000000000302",
+      "employee_no": "000002",
+      "display_name": "财务业务管理员",
+      "primary_department_id": "00000000-0000-4000-8000-000000000202",
+      "employment_status": "active",
+      "row_version": 1
+    },
+    {
+      "person_id": "00000000-0000-4000-8000-000000000303",
+      "employee_no": "000003",
+      "display_name": "智能体IT管理员",
+      "primary_department_id": "00000000-0000-4000-8000-000000000201",
+      "employment_status": "active",
+      "row_version": 1
+    },
+    {
+      "person_id": "00000000-0000-4000-8000-000000000304",
+      "employee_no": "000004",
+      "display_name": "个人智能体用户",
+      "primary_department_id": "00000000-0000-4000-8000-000000000202",
+      "employment_status": "active",
+      "row_version": 1
+    },
+    {
+      "person_id": "00000000-0000-4000-8000-000000000305",
+      "employee_no": "000005",
+      "display_name": "个人智能体协作用户",
+      "primary_department_id": "00000000-0000-4000-8000-000000000202",
+      "employment_status": "active",
+      "row_version": 1
+    },
+    {
+      "person_id": "00000000-0000-4000-8000-000000000306",
+      "employee_no": "000006",
+      "display_name": "法律业务管理员",
+      "primary_department_id": "00000000-0000-4000-8000-000000000203",
+      "employment_status": "active",
+      "row_version": 1
+    }
+  ],
+  "runtime_families": [
+    {
+      "runtime_family_id": "00000000-0000-4000-8000-000000000111",
+      "family_code": "openclaw",
+      "name": "OpenClaw",
+      "status": "active",
+      "row_version": 1
+    },
+    {
+      "runtime_family_id": "00000000-0000-4000-8000-000000000112",
+      "family_code": "hermes",
+      "name": "Hermes Agent",
+      "status": "active",
+      "row_version": 1
+    }
+  ],
+  "servers": [
+    {
+      "server_id": "00000000-0000-4000-8000-000000000401",
+      "environment_id": "00000000-0000-4000-8000-000000000001",
+      "cloud_provider_id": "00000000-0000-4000-8000-000000000101",
+      "provider_instance_id": "ecs-prod-001",
+      "name": "生产裸金属节点01",
+      "lifecycle_status": "active",
+      "cpu_cores": 16,
+      "memory_gib": 64,
+      "disk_gib": 500,
+      "internal_ip": "10.10.0.11",
+      "public_ip": null,
+      "os_name": "Ubuntu",
+      "os_version": "24.04",
+      "architecture": "x86_64",
+      "work_account": "agentops",
+      "row_version": 1
+    },
+    {
+      "server_id": "00000000-0000-4000-8000-000000000402",
+      "environment_id": "00000000-0000-4000-8000-000000000001",
+      "cloud_provider_id": "00000000-0000-4000-8000-000000000102",
+      "provider_instance_id": "private-vm-002",
+      "name": "生产容器节点02",
+      "lifecycle_status": "active",
+      "cpu_cores": 32,
+      "memory_gib": 128,
+      "disk_gib": 1024,
+      "internal_ip": "10.10.0.12",
+      "public_ip": "203.0.113.12",
+      "os_name": "Rocky Linux",
+      "os_version": "9.5",
+      "architecture": "x86_64",
+      "work_account": "containerops",
+      "row_version": 1
+    },
+    {
+      "server_id": "00000000-0000-4000-8000-000000000403",
+      "environment_id": "00000000-0000-4000-8000-000000000001",
+      "cloud_provider_id": "00000000-0000-4000-8000-000000000101",
+      "provider_instance_id": "ecs-standby-003",
+      "name": "待部署节点03",
+      "lifecycle_status": "planned",
+      "cpu_cores": 8,
+      "memory_gib": 32,
+      "disk_gib": 200,
+      "internal_ip": "10.10.0.13",
+      "public_ip": null,
+      "os_name": "Ubuntu",
+      "os_version": "22.04",
+      "architecture": "aarch64",
+      "work_account": "agentops",
+      "row_version": 1
+    }
+  ],
+  "management_groups": [
+    {
+      "group_id": "00000000-0000-4000-8000-000000000501",
+      "group_code": "server-prod-all",
+      "name": "生产服务器组",
+      "resource_type": "server",
+      "purpose": "生产服务器批量管理",
+      "lifecycle_status": "active",
+      "row_version": 1
+    },
+    {
+      "group_id": "00000000-0000-4000-8000-000000000502",
+      "group_code": "server-container-hosts",
+      "name": "容器宿主机组",
+      "resource_type": "server",
+      "purpose": "容器部署测试",
+      "lifecycle_status": "active",
+      "row_version": 1
+    },
+    {
+      "group_id": "00000000-0000-4000-8000-000000000503",
+      "group_code": "agent-priority",
+      "name": "重点智能体组",
+      "resource_type": "agent",
+      "purpose": "重点保障对象",
+      "lifecycle_status": "active",
+      "row_version": 1
+    },
+    {
+      "group_id": "00000000-0000-4000-8000-000000000504",
+      "group_code": "agent-finance",
+      "name": "财务智能体组",
+      "resource_type": "agent",
+      "purpose": "财务领域批量管理",
+      "lifecycle_status": "active",
+      "row_version": 1
+    }
+  ],
+  "server_group_members": [
+    {
+      "member_id": "00000000-0000-4000-8000-000000000511",
+      "group_id": "00000000-0000-4000-8000-000000000501",
+      "server_id": "00000000-0000-4000-8000-000000000401",
+      "active": true
+    },
+    {
+      "member_id": "00000000-0000-4000-8000-000000000512",
+      "group_id": "00000000-0000-4000-8000-000000000501",
+      "server_id": "00000000-0000-4000-8000-000000000402",
+      "active": true
+    },
+    {
+      "member_id": "00000000-0000-4000-8000-000000000513",
+      "group_id": "00000000-0000-4000-8000-000000000502",
+      "server_id": "00000000-0000-4000-8000-000000000402",
+      "active": true
+    }
+  ],
+  "runtimes": [
+    {
+      "runtime_id": "00000000-0000-4000-8000-000000000601",
+      "server_id": "00000000-0000-4000-8000-000000000401",
+      "runtime_family_id": "00000000-0000-4000-8000-000000000111",
+      "name": "员工助手 OpenClaw Runtime",
+      "runtime_role": "gateway",
+      "deployment_mode": "baremetal",
+      "desired_version": "2026.7.1",
+      "lifecycle_status": "active",
+      "observed_status": "running",
+      "bind_address": "lan",
+      "endpoint_port": 16402,
+      "runtime_account": "openclaw",
+      "config_path": "/home/openclaw/.openclaw/openclaw.json",
+      "state_path": "/home/openclaw/.openclaw",
+      "container_name": null,
+      "image_ref": null,
+      "row_version": 1
+    },
+    {
+      "runtime_id": "00000000-0000-4000-8000-000000000602",
+      "server_id": "00000000-0000-4000-8000-000000000402",
+      "runtime_family_id": "00000000-0000-4000-8000-000000000112",
+      "name": "Hermes容器Runtime",
+      "runtime_role": "gateway",
+      "deployment_mode": "container",
+      "desired_version": "1.0.0",
+      "lifecycle_status": "active",
+      "observed_status": "running",
+      "bind_address": "0.0.0.0",
+      "endpoint_port": 18080,
+      "runtime_account": "hermes",
+      "config_path": "/home/hermes/.hermes/config.yaml",
+      "state_path": "/home/hermes/.hermes",
+      "container_name": "hermes-gateway",
+      "image_ref": "nousresearch/hermes-agent:1.0.0",
+      "row_version": 1
+    },
+    {
+      "runtime_id": "00000000-0000-4000-8000-000000000603",
+      "server_id": "00000000-0000-4000-8000-000000000403",
+      "runtime_family_id": "00000000-0000-4000-8000-000000000111",
+      "name": "待启用OpenClaw Runtime",
+      "runtime_role": "gateway",
+      "deployment_mode": "baremetal",
+      "desired_version": "2026.7.1",
+      "lifecycle_status": "planned",
+      "observed_status": "unknown",
+      "bind_address": "loopback",
+      "endpoint_port": 16402,
+      "runtime_account": "openclaw",
+      "config_path": "/home/openclaw/.openclaw/openclaw.json",
+      "state_path": "/home/openclaw/.openclaw",
+      "container_name": null,
+      "image_ref": null,
+      "row_version": 1
+    },
+    {
+      "runtime_id": "00000000-0000-4000-8000-000000000604",
+      "server_id": "00000000-0000-4000-8000-000000000401",
+      "runtime_family_id": "00000000-0000-4000-8000-000000000111",
+      "name": "财务助手 OpenClaw Runtime",
+      "runtime_role": "gateway",
+      "deployment_mode": "baremetal",
+      "desired_version": "2026.7.1",
+      "lifecycle_status": "active",
+      "observed_status": "running",
+      "bind_address": "lan",
+      "endpoint_port": 16403,
+      "runtime_account": "openclaw-finance",
+      "config_path": "/home/openclaw-finance/.openclaw/openclaw.json",
+      "state_path": "/home/openclaw-finance/.openclaw",
+      "container_name": null,
+      "image_ref": null,
+      "row_version": 1
+    },
+    {
+      "runtime_id": "00000000-0000-4000-8000-000000000605",
+      "server_id": "00000000-0000-4000-8000-000000000401",
+      "runtime_family_id": "00000000-0000-4000-8000-000000000111",
+      "name": "税务助手 OpenClaw Runtime",
+      "runtime_role": "gateway",
+      "deployment_mode": "baremetal",
+      "desired_version": "2026.7.1",
+      "lifecycle_status": "active",
+      "observed_status": "running",
+      "bind_address": "lan",
+      "endpoint_port": 16404,
+      "runtime_account": "openclaw-tax",
+      "config_path": "/home/openclaw-tax/.openclaw/openclaw.json",
+      "state_path": "/home/openclaw-tax/.openclaw",
+      "container_name": null,
+      "image_ref": null,
+      "row_version": 1
+    }
+  ],
+  "agents": [
+    {
+      "agent_id": "00000000-0000-4000-8000-000000000701",
+      "name": "员工个人数字助手",
+      "structure_role": "primary",
+      "parent_agent_id": null,
+      "service_archetype": "personal",
+      "lifecycle_status": "active",
+      "owning_department_id": "00000000-0000-4000-8000-000000000201",
+      "business_admin_person_id": "00000000-0000-4000-8000-000000000302",
+      "it_admin_person_id": "00000000-0000-4000-8000-000000000303",
+      "primary_service_person_id": "00000000-0000-4000-8000-000000000304",
+      "primary_service_department_id": null,
+      "business_domain": null,
+      "business_scenario": null,
+      "row_version": 1
+    },
+    {
+      "agent_id": "00000000-0000-4000-8000-000000000711",
+      "name": "个人信息检索子智能体",
+      "structure_role": "subagent",
+      "parent_agent_id": "00000000-0000-4000-8000-000000000701",
+      "service_archetype": "personal",
+      "lifecycle_status": "active",
+      "owning_department_id": null,
+      "business_admin_person_id": null,
+      "it_admin_person_id": null,
+      "primary_service_person_id": null,
+      "primary_service_department_id": null,
+      "business_domain": null,
+      "business_scenario": null,
+      "row_version": 1
+    },
+    {
+      "agent_id": "00000000-0000-4000-8000-000000000702",
+      "name": "财务部综合助手",
+      "structure_role": "primary",
+      "parent_agent_id": null,
+      "service_archetype": "department",
+      "lifecycle_status": "active",
+      "owning_department_id": "00000000-0000-4000-8000-000000000202",
+      "business_admin_person_id": "00000000-0000-4000-8000-000000000302",
+      "it_admin_person_id": "00000000-0000-4000-8000-000000000303",
+      "primary_service_person_id": null,
+      "primary_service_department_id": "00000000-0000-4000-8000-000000000202",
+      "business_domain": null,
+      "business_scenario": null,
+      "row_version": 1
+    },
+    {
+      "agent_id": "00000000-0000-4000-8000-000000000712",
+      "name": "财务报表子智能体",
+      "structure_role": "subagent",
+      "parent_agent_id": "00000000-0000-4000-8000-000000000702",
+      "service_archetype": "department",
+      "lifecycle_status": "active",
+      "owning_department_id": null,
+      "business_admin_person_id": null,
+      "it_admin_person_id": null,
+      "primary_service_person_id": null,
+      "primary_service_department_id": null,
+      "business_domain": null,
+      "business_scenario": null,
+      "row_version": 1
+    },
+    {
+      "agent_id": "00000000-0000-4000-8000-000000000703",
+      "name": "税务合规智能体",
+      "structure_role": "primary",
+      "parent_agent_id": null,
+      "service_archetype": "business",
+      "lifecycle_status": "active",
+      "owning_department_id": "00000000-0000-4000-8000-000000000203",
+      "business_admin_person_id": "00000000-0000-4000-8000-000000000302",
+      "it_admin_person_id": "00000000-0000-4000-8000-000000000303",
+      "primary_service_person_id": null,
+      "primary_service_department_id": null,
+      "business_domain": "财税管理",
+      "business_scenario": "税务合规审查",
+      "row_version": 1
+    },
+    {
+      "agent_id": "00000000-0000-4000-8000-000000000713",
+      "name": "税务政策子智能体",
+      "structure_role": "subagent",
+      "parent_agent_id": "00000000-0000-4000-8000-000000000703",
+      "service_archetype": "business",
+      "lifecycle_status": "active",
+      "owning_department_id": null,
+      "business_admin_person_id": null,
+      "it_admin_person_id": null,
+      "primary_service_person_id": null,
+      "primary_service_department_id": null,
+      "business_domain": null,
+      "business_scenario": null,
+      "row_version": 1
+    },
+    {
+      "agent_id": "00000000-0000-4000-8000-000000000704",
+      "name": "合同风险智能体",
+      "structure_role": "primary",
+      "parent_agent_id": null,
+      "service_archetype": "business",
+      "lifecycle_status": "active",
+      "owning_department_id": "00000000-0000-4000-8000-000000000203",
+      "business_admin_person_id": "00000000-0000-4000-8000-000000000306",
+      "it_admin_person_id": "00000000-0000-4000-8000-000000000303",
+      "primary_service_person_id": null,
+      "primary_service_department_id": null,
+      "business_domain": "法务管理",
+      "business_scenario": "合同风险识别",
+      "row_version": 1
+    }
+  ],
+  "agent_access_users": [
+    {
+      "access_id": "00000000-0000-4000-8000-000000000a01",
+      "agent_id": "00000000-0000-4000-8000-000000000701",
+      "person_id": "00000000-0000-4000-8000-000000000304",
+      "active": true
+    },
+    {
+      "access_id": "00000000-0000-4000-8000-000000000a02",
+      "agent_id": "00000000-0000-4000-8000-000000000701",
+      "person_id": "00000000-0000-4000-8000-000000000305",
+      "active": true
+    },
+    {
+      "access_id": "00000000-0000-4000-8000-000000000a03",
+      "agent_id": "00000000-0000-4000-8000-000000000702",
+      "person_id": "00000000-0000-4000-8000-000000000302",
+      "active": true
+    },
+    {
+      "access_id": "00000000-0000-4000-8000-000000000a04",
+      "agent_id": "00000000-0000-4000-8000-000000000704",
+      "person_id": "00000000-0000-4000-8000-000000000306",
+      "active": true
+    }
+  ],
+  "agent_group_members": [
+    {
+      "member_id": "00000000-0000-4000-8000-000000000521",
+      "group_id": "00000000-0000-4000-8000-000000000503",
+      "agent_id": "00000000-0000-4000-8000-000000000701",
+      "active": true
+    },
+    {
+      "member_id": "00000000-0000-4000-8000-000000000522",
+      "group_id": "00000000-0000-4000-8000-000000000503",
+      "agent_id": "00000000-0000-4000-8000-000000000703",
+      "active": true
+    },
+    {
+      "member_id": "00000000-0000-4000-8000-000000000523",
+      "group_id": "00000000-0000-4000-8000-000000000504",
+      "agent_id": "00000000-0000-4000-8000-000000000702",
+      "active": true
+    },
+    {
+      "member_id": "00000000-0000-4000-8000-000000000524",
+      "group_id": "00000000-0000-4000-8000-000000000504",
+      "agent_id": "00000000-0000-4000-8000-000000000703",
+      "active": true
+    }
+  ],
+  "agent_deployments": [
+    {
+      "deployment_id": "00000000-0000-4000-8000-000000000801",
+      "primary_agent_id": "00000000-0000-4000-8000-000000000701",
+      "runtime_id": "00000000-0000-4000-8000-000000000601",
+      "lifecycle_status": "active",
+      "row_version": 1
+    },
+    {
+      "deployment_id": "00000000-0000-4000-8000-000000000802",
+      "primary_agent_id": "00000000-0000-4000-8000-000000000702",
+      "runtime_id": "00000000-0000-4000-8000-000000000604",
+      "lifecycle_status": "active",
+      "row_version": 1
+    },
+    {
+      "deployment_id": "00000000-0000-4000-8000-000000000803",
+      "primary_agent_id": "00000000-0000-4000-8000-000000000703",
+      "runtime_id": "00000000-0000-4000-8000-000000000605",
+      "lifecycle_status": "active",
+      "row_version": 1
+    },
+    {
+      "deployment_id": "00000000-0000-4000-8000-000000000804",
+      "primary_agent_id": "00000000-0000-4000-8000-000000000704",
+      "runtime_id": "00000000-0000-4000-8000-000000000602",
+      "lifecycle_status": "active",
+      "row_version": 1
+    }
+  ],
+  "agent_deployment_members": [
+    {
+      "deployment_member_id": "00000000-0000-4000-8000-000000000901",
+      "deployment_id": "00000000-0000-4000-8000-000000000801",
+      "runtime_id": "00000000-0000-4000-8000-000000000601",
+      "agent_id": "00000000-0000-4000-8000-000000000701",
+      "member_role": "primary",
+      "parent_member_id": null,
+      "runtime_agent_key": "personal-main",
+      "mapping_status": "verified"
+    },
+    {
+      "deployment_member_id": "00000000-0000-4000-8000-000000000911",
+      "deployment_id": "00000000-0000-4000-8000-000000000801",
+      "runtime_id": "00000000-0000-4000-8000-000000000601",
+      "agent_id": "00000000-0000-4000-8000-000000000711",
+      "member_role": "subagent",
+      "parent_member_id": "00000000-0000-4000-8000-000000000901",
+      "runtime_agent_key": "personal-research",
+      "mapping_status": "verified"
+    },
+    {
+      "deployment_member_id": "00000000-0000-4000-8000-000000000902",
+      "deployment_id": "00000000-0000-4000-8000-000000000802",
+      "runtime_id": "00000000-0000-4000-8000-000000000604",
+      "agent_id": "00000000-0000-4000-8000-000000000702",
+      "member_role": "primary",
+      "parent_member_id": null,
+      "runtime_agent_key": "finance-main",
+      "mapping_status": "verified"
+    },
+    {
+      "deployment_member_id": "00000000-0000-4000-8000-000000000912",
+      "deployment_id": "00000000-0000-4000-8000-000000000802",
+      "runtime_id": "00000000-0000-4000-8000-000000000604",
+      "agent_id": "00000000-0000-4000-8000-000000000712",
+      "member_role": "subagent",
+      "parent_member_id": "00000000-0000-4000-8000-000000000902",
+      "runtime_agent_key": "finance-reporting",
+      "mapping_status": "verified"
+    },
+    {
+      "deployment_member_id": "00000000-0000-4000-8000-000000000903",
+      "deployment_id": "00000000-0000-4000-8000-000000000803",
+      "runtime_id": "00000000-0000-4000-8000-000000000605",
+      "agent_id": "00000000-0000-4000-8000-000000000703",
+      "member_role": "primary",
+      "parent_member_id": null,
+      "runtime_agent_key": "tax-main",
+      "mapping_status": "verified"
+    },
+    {
+      "deployment_member_id": "00000000-0000-4000-8000-000000000913",
+      "deployment_id": "00000000-0000-4000-8000-000000000803",
+      "runtime_id": "00000000-0000-4000-8000-000000000605",
+      "agent_id": "00000000-0000-4000-8000-000000000713",
+      "member_role": "subagent",
+      "parent_member_id": "00000000-0000-4000-8000-000000000903",
+      "runtime_agent_key": "tax-policy",
+      "mapping_status": "verified"
+    },
+    {
+      "deployment_member_id": "00000000-0000-4000-8000-000000000904",
+      "deployment_id": "00000000-0000-4000-8000-000000000804",
+      "runtime_id": "00000000-0000-4000-8000-000000000602",
+      "agent_id": "00000000-0000-4000-8000-000000000704",
+      "member_role": "primary",
+      "parent_member_id": null,
+      "runtime_agent_key": "legal-main",
+      "mapping_status": "verified"
+    }
+  ],
+  "agent_network_requirements": [
+    {
+      "network_requirement_id": "00000000-0000-4000-8000-000000000b01",
+      "agent_id": "00000000-0000-4000-8000-000000000703",
+      "system_name": "企业税务平台",
+      "target_type": "dns",
+      "target_value": "tax.internal.example",
+      "protocol": "https",
+      "port_from": 443,
+      "port_to": 443
+    }
+  ]
+}

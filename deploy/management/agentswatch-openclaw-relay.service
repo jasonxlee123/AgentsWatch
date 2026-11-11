@@ -1,0 +1,30 @@
+[Unit]
+Description=AgentsWatch OpenClaw WebUI Unix-socket relay
+After=network.target
+
+[Service]
+Type=simple
+User=openclaw
+Group=openclaw
+ExecStartPre=/usr/bin/test -d /data/agentswatch/management/runtime-web
+ExecStartPre=/usr/bin/rm -f /data/agentswatch/management/runtime-web/openclaw.sock
+ExecStart=/usr/bin/socat UNIX-LISTEN:/data/agentswatch/management/runtime-web/openclaw.sock,fork,mode=0660 TCP:127.0.0.1:16402,nodelay
+Restart=on-failure
+RestartSec=3s
+TimeoutStopSec=15s
+UMask=0007
+
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/data/agentswatch/management/runtime-web
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictSUIDSGID=true
+LockPersonality=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+
+[Install]
+WantedBy=multi-user.target

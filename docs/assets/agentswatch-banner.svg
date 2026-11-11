@@ -1,0 +1,86 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="320" viewBox="0 0 1200 320" role="img" aria-labelledby="title desc">
+  <title id="title">AgentsWatch</title>
+  <desc id="desc">AgentsWatch — agent asset management, automation and observability platform</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#071b2b"/>
+      <stop offset="0.55" stop-color="#0a2f3a"/>
+      <stop offset="1" stop-color="#0d4a50"/>
+    </linearGradient>
+    <linearGradient id="mark" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#19b3b0"/>
+      <stop offset="1" stop-color="#176ec5"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#19b3b0" stop-opacity="0.35"/>
+      <stop offset="1" stop-color="#19b3b0" stop-opacity="0"/>
+    </radialGradient>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M40 0H0V40" fill="none" stroke="#7fe3dd" stroke-opacity="0.07" stroke-width="1"/>
+    </pattern>
+  </defs>
+
+  <rect width="1200" height="320" fill="url(#bg)"/>
+  <rect width="1200" height="320" fill="url(#grid)"/>
+  <circle cx="1010" cy="160" r="185" fill="url(#glow)"/>
+
+  <!-- radar -->
+  <g fill="none" stroke="#6fd8d2" stroke-opacity="0.28">
+    <circle cx="1010" cy="160" r="52"/>
+    <circle cx="1010" cy="160" r="96"/>
+    <circle cx="1010" cy="160" r="140"/>
+  </g>
+  <g fill="none" stroke="#6fd8d2" stroke-opacity="0.18" stroke-dasharray="3 7">
+    <path d="M1010 20V300M870 160H1150"/>
+  </g>
+  <g stroke="#19b3b0" stroke-width="2" stroke-linecap="round" stroke-opacity="0.85">
+    <path d="M1010 160L1104 92"/>
+  </g>
+  <g fill="#7fe3dd">
+    <circle cx="1063" cy="118" r="5"/>
+    <circle cx="958" cy="112" r="4"/>
+    <circle cx="1080" cy="205" r="4"/>
+    <circle cx="944" cy="212" r="5"/>
+    <circle cx="1010" cy="160" r="6" fill="#ffffff"/>
+  </g>
+  <g fill="#8fe9e3" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13">
+    <text x="1070" y="108">gateway</text>
+    <text x="880" y="102">otel</text>
+    <text x="1088" y="222">logs</text>
+    <text x="858" y="232">traces</text>
+  </g>
+
+  <!-- mark -->
+  <g transform="translate(72 82)">
+    <rect width="76" height="76" rx="22" fill="url(#mark)"/>
+    <path d="M38 16l20 8v15c0 13-8 22-20 27-12-5-20-14-20-27V24l20-8z" fill="none" stroke="#ffffff" stroke-width="3.2" stroke-linejoin="round"/>
+    <path d="M28 39l7 7 14-15" fill="none" stroke="#ffffff" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+
+  <text x="180" y="132" fill="#ffffff" font-family="Inter, 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif" font-size="62" font-weight="800" letter-spacing="-2">AgentsWatch</text>
+  <text x="183" y="176" fill="#9fe4df" font-family="Inter, 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif" font-size="21" font-weight="500" letter-spacing="0.5">让每一个智能体都可见、可控、可审计</text>
+
+  <g font-family="Inter, 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif" font-size="14" font-weight="600">
+    <g transform="translate(183 206)">
+      <rect width="104" height="34" rx="17" fill="#ffffff" fill-opacity="0.09" stroke="#7fe3dd" stroke-opacity="0.28"/>
+      <text x="52" y="23" fill="#d8f6f3" text-anchor="middle">资产管理</text>
+    </g>
+    <g transform="translate(299 206)">
+      <rect width="104" height="34" rx="17" fill="#ffffff" fill-opacity="0.09" stroke="#7fe3dd" stroke-opacity="0.28"/>
+      <text x="52" y="23" fill="#d8f6f3" text-anchor="middle">自动化运维</text>
+    </g>
+    <g transform="translate(415 206)">
+      <rect width="118" height="34" rx="17" fill="#ffffff" fill-opacity="0.09" stroke="#7fe3dd" stroke-opacity="0.28"/>
+      <text x="59" y="23" fill="#d8f6f3" text-anchor="middle">全链路可观测</text>
+    </g>
+    <g transform="translate(545 206)">
+      <rect width="118" height="34" rx="17" fill="#ffffff" fill-opacity="0.09" stroke="#7fe3dd" stroke-opacity="0.28"/>
+      <text x="59" y="23" fill="#d8f6f3" text-anchor="middle">不可变审计</text>
+    </g>
+  </g>
+
+  <g transform="translate(1080 34)">
+    <rect width="82" height="30" rx="15" fill="#19b3b0"/>
+    <text x="41" y="20" fill="#062b2f" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13" font-weight="700" text-anchor="middle">v2.2.0</text>
+  </g>
+</svg>

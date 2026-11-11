@@ -1,0 +1,111 @@
+# Overlay for a full deployment. Invoke it after the operations and management
+# Compose files with an explicit project name; see deploy/combined/README.md.
+
+services:
+  # Standalone ingresses remain available to their standalone deployment modes,
+  # but are disabled in the combined project.
+  nginx:
+    profiles: ["standalone-ingress"]
+
+  management-nginx:
+    profiles: ["standalone-ingress"]
+
+  management-api:
+    environment:
+      # The management API crosses into the operations network only through the
+      # internal listener of the shared Nginx.
+      AGENTSWATCH_OBSERVABILITY_CONTROL_URL: http://combined-nginx:8080
+      AGENTSWATCH_OBSERVABILITY_CONTROL_TOKEN: "${AGENTSWATCH_OBSERVABILITY_CONTROL_TOKEN:?set AGENTSWATCH_OBSERVABILITY_CONTROL_TOKEN}"
+    networks:
+      - management-backend
+
+  management-mcp:
+    networks:
+      - management-backend
+
+  observability-control:
+    image: "${AGENTSWATCH_OBSERVABILITY_CONTROL_IMAGE:?set AGENTSWATCH_OBSERVABILITY_CONTROL_IMAGE}"
+    restart: unless-stopped
+    user: "${AGENTSWATCH_OBSERVABILITY_CONTROL_UID:-10001}:${AGENTSWATCH_OBSERVABILITY_CONTROL_GID:-10001}"
+    read_only: true
+    environment:
+      AGENTSWATCH_OBSERVABILITY_CONTROL_ROOT: /data/agentswatch/observability-control
+      AGENTSWATCH_OBSERVABILITY_INTEGRATION_DATABASE_URL: "${AGENTSWATCH_OBSERVABILITY_INTEGRATION_DATABASE_URL:?set AGENTSWATCH_OBSERVABILITY_INTEGRATION_DATABASE_URL}"
+      AGENTSWATCH_OTEL_ENDPOINT: "${AGENTSWATCH_OTEL_ENDPOINT:?set AGENTSWATCH_OTEL_ENDPOINT}"
+      AGENTSWATCH_OBSERVABILITY_RUNTIME_FAMILY: openclaw
+      AGENTSWATCH_OBSERVABILITY_ALLOW_EMPTY_INVENTORY: "${AGENTSWATCH_OBSERVABILITY_ALLOW_EMPTY_INVENTORY:-false}"
+      AGENTSWATCH_OBSERVABILITY_ALLOW_DESTRUCTIVE_INVENTORY: "${AGENTSWATCH_OBSERVABILITY_ALLOW_DESTRUCTIVE_INVENTORY:-false}"
+      AGENTSWATCH_OBSERVABILITY_CONTROL_TOKEN: "${AGENTSWATCH_OBSERVABILITY_CONTROL_TOKEN:?set AGENTSWATCH_OBSERVABILITY_CONTROL_TOKEN}"
+      AGENTSWATCH_PROMETHEUS_RELOAD_URL: http://prometheus:9090/-/reload
+      PGSSLMODE: verify-full
+      PGSSLROOTCERT: /run/secrets/agentswatch-database-ca.crt
+    volumes:
+      - ${AGENTSWATCH_DATA_ROOT:-/data/agentswatch}/observability-control:/data/agentswatch/observability-control:z
+      - "${AGENTSWATCH_DATABASE_CA_HOST_FILE:?set AGENTSWATCH_DATABASE_CA_HOST_FILE}:/run/secrets/agentswatch-database-ca.crt:ro"
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=32m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 128
+    networks:
+      - default
+    healthcheck:
+      test: ["CMD", "python", "-c", "from urllib.request import urlopen; r=urlopen('http://127.0.0.1:8011/healthz', timeout=2); assert r.status == 200"]
+      interval: 15s
+      timeout: 3s
+      start_period: 10s
+      retries: 4
+    depends_on:
+      storage-init:
+        condition: service_completed_successfully
+      prometheus:
+        condition: service_started
+
+  combined-nginx:
+    image: ${NGINX_IMAGE:-nginx:stable-alpine}
+    restart: unless-stopped
+    read_only: true
+    ports:
+      - "${HTTPS_BIND_ADDRESS:-0.0.0.0}:${HTTPS_PORT:-443}:443"
+    volumes:
+      - ./deploy/combined/nginx-combined.conf:/etc/nginx/nginx.conf:ro,z
+      - ./nginx/certs:/etc/nginx/certs:ro,z
+      - management-run:/data/agentswatch/management/run:ro
+    tmpfs:
+      - /var/cache/nginx:rw,noexec,nosuid,nodev,size=32m
+      - /var/run:rw,noexec,nosuid,nodev,size=1m
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 128
+    networks:
+      - default
+      - management-backend
+    depends_on:
+      nginx-tls-init:
+        condition: service_completed_successfully
+      grafana:
+        condition: service_started
+      management-api:
+        condition: service_healthy
+      management-mcp:
+        condition: service_healthy
+      observability-control:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-check-certificate -q -O - https://127.0.0.1/nginx-health | grep -q '^ok$'"]
+      interval: 15s
+      timeout: 5s
+      start_period: 10s
+      retries: 5
+
+networks:
+  management-backend:
+    driver: bridge
